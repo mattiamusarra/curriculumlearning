@@ -172,14 +172,16 @@ target_include_directories(${MJCF_PLUGIN_TARGET_NAME} PRIVATE
 
 add_library(${MJC_PHYSICS_PLUGIN_TARGET_NAME} SHARED)
 target_sources(${MJC_PHYSICS_PLUGIN_TARGET_NAME} PRIVATE
+  mjcPhysics/actuator.cpp
   mjcPhysics/collisionAPI.cpp
+  mjcPhysics/imageableAPI.cpp
   mjcPhysics/jointAPI.cpp
   mjcPhysics/keyframe.cpp
+  mjcPhysics/materialAPI.cpp
   mjcPhysics/meshCollisionAPI.cpp
   mjcPhysics/sceneAPI.cpp
   mjcPhysics/siteAPI.cpp
   mjcPhysics/tokens.cpp
-  mjcPhysics/transmission.cpp
 )
 set_target_properties(${MJC_PHYSICS_PLUGIN_TARGET_NAME} PROPERTIES
   OUTPUT_NAME ${MJC_PHYSICS_PLUGIN_TARGET_NAME}
@@ -195,9 +197,18 @@ target_sources(mujoco PRIVATE
   kinematic_tree.cc
   kinematic_tree.h
   layer_sink.cc
+  material_parsing.cc
+  material_parsing.h
   usd_to_mjspec.cc
   utils.cc
   writer.cc
+)
+
+# pxr/usd/tf/hashset.h might include deprecated headers so disable this check
+# when compiling with USD enabled.
+target_compile_options(
+     mujoco
+     PRIVATE -Wno-deprecated
 )
 
 if (USD_DIR)

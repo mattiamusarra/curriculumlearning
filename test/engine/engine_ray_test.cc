@@ -14,6 +14,9 @@
 
 // Tests for ray casting.
 
+#include <cstring>
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <mujoco/mjdata.h>
@@ -73,12 +76,14 @@ static constexpr char kCubeletModel[] = R"(
 </mujoco>
 )";
 
+using ::testing::DoubleNear;
 using ::testing::NotNull;
 using RayTest = MujocoTest;
 
 TEST_F(RayTest, NoExclusions) {
-  mjModel* model = LoadModelFromString(kRayCastingModel);
-  ASSERT_THAT(model, NotNull());
+  char error[1024];
+  mjModel* model = LoadModelFromString(kRayCastingModel, error, sizeof(error));
+  ASSERT_THAT(model, NotNull()) << error;
   mjData* data = mj_makeData(model);
   ASSERT_THAT(data, NotNull());
 
@@ -99,8 +104,9 @@ TEST_F(RayTest, NoExclusions) {
 }
 
 TEST_F(RayTest, Exclusions) {
-  mjModel* model = LoadModelFromString(kRayCastingModel);
-  ASSERT_THAT(model, NotNull());
+  char error[1024];
+  mjModel* model = LoadModelFromString(kRayCastingModel, error, sizeof(error));
+  ASSERT_THAT(model, NotNull()) << error;
   mjData* data = mj_makeData(model);
   ASSERT_THAT(data, NotNull());
 
@@ -141,8 +147,9 @@ TEST_F(RayTest, Exclusions) {
 }
 
 TEST_F(RayTest, ExcludeStatic) {
-  mjModel* model = LoadModelFromString(kRayCastingModel);
-  ASSERT_THAT(model, NotNull());
+  char error[1024];
+  mjModel* model = LoadModelFromString(kRayCastingModel, error, sizeof(error));
+  ASSERT_THAT(model, NotNull()) << error;
   mjData* data = mj_makeData(model);
   ASSERT_THAT(data, NotNull());
 
@@ -165,8 +172,9 @@ TEST_F(RayTest, ExcludeStatic) {
 // ------------------------------- mj_multiRay --------------------------------
 
 TEST_F(RayTest, MultiRayEqualsSingleRay) {
-  mjModel* m = LoadModelFromString(kRayCastingModel);
-  ASSERT_THAT(m, NotNull());
+  char error[1024];
+  mjModel* m = LoadModelFromString(kRayCastingModel, error, sizeof(error));
+  ASSERT_THAT(m, NotNull()) << error;
   mjData* d = mj_makeData(m);
   ASSERT_THAT(d, NotNull());
   mj_forward(m, d);
@@ -214,8 +222,9 @@ TEST_F(RayTest, MultiRayEqualsSingleRay) {
 }
 
 TEST_F(RayTest, EdgeCases) {
-  mjModel* m = LoadModelFromString(kSingleGeomModel);
-  ASSERT_THAT(m, NotNull());
+  char error[1024];
+  mjModel* m = LoadModelFromString(kSingleGeomModel, error, sizeof(error));
+  ASSERT_THAT(m, NotNull()) << error;
   ASSERT_THAT(m->nbvh, 1);
   mjData* d = mj_makeData(m);
   ASSERT_THAT(d, NotNull());
@@ -397,10 +406,62 @@ TEST_F(RayTest, RayMeshPruning) {
   _rayMeshTest(m);
   mj_deleteModel(m);
 
-  m = LoadModelFromString(kCubeletModel);
-  ASSERT_THAT(m, NotNull());
+  m = LoadModelFromString(kCubeletModel, error, sizeof(error));
+  ASSERT_THAT(m, NotNull()) << error;
   _rayMeshTest(m);
   mj_deleteModel(m);
+}
+
+TEST_F(RayTest, RayHfield) {
+  const char xml[] = R"(
+  <mujoco>
+    <asset>
+      <hfield name="J" size="2 3 1 1" nrow="4" ncol="3"
+              elevation="0 0 0
+                         0 0 0
+                         1 1 1
+                         1 1 1"/>
+    </asset>
+
+    <worldbody>
+      <light pos="0 0 1"/>
+      <body name="dummy">
+        <geom type="hfield" hfield="J" pos="0 0 .5"/>
+      </body>
+      <site name="1" pos="3 -2 1" zaxis="-1 0 0"/>
+      <site name="2" pos="3 -2 0" zaxis="-1 0 0"/>
+      <site name="3" pos="3  1 0" zaxis="-1 0 0"/>
+      <body mocap="true" pos="1 0 1.5">
+        <geom type="box" size=".2 .2 .2"/>
+        <site name="4" zaxis="0 0 -1"/>
+      </body>
+    </worldbody>
+
+    <sensor>
+      <rangefinder site="1"/>
+      <rangefinder site="2"/>
+      <rangefinder site="3"/>
+      <rangefinder site="4"/>
+    </sensor>
+  </mujoco>
+  )";
+
+
+  char error[1024];
+  mjModel* model = LoadModelFromString(xml, error, sizeof(error));
+  ASSERT_THAT(model, NotNull()) << error;
+  mjData* data = mj_makeData(model);
+
+  mj_forward(model, data);
+
+  double tol = 1e-8;
+  EXPECT_THAT(data->sensordata[0], DoubleNear(1, tol));
+  EXPECT_THAT(data->sensordata[1], DoubleNear(1, tol));
+  EXPECT_THAT(data->sensordata[2], DoubleNear(1, tol));
+  EXPECT_THAT(data->sensordata[3], DoubleNear(0.5, tol));
+
+  mj_deleteData(data);
+  mj_deleteModel(model);
 }
 
 }  // namespace

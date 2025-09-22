@@ -15,15 +15,14 @@
 #include "engine/engine_derivative_fd.h"
 
 #include <stddef.h>
-#include <string.h>
 
 #include <mujoco/mjdata.h>
 #include <mujoco/mjmacro.h>
 #include <mujoco/mjmodel.h>
 #include <mujoco/mjsan.h>  // IWYU pragma: keep
 #include "engine/engine_forward.h"
-#include "engine/engine_io.h"
 #include "engine/engine_inverse.h"
+#include "engine/engine_memory.h"
 #include "engine/engine_macro.h"
 #include "engine/engine_support.h"
 #include "engine/engine_util_blas.h"
@@ -204,8 +203,8 @@ void mjd_passive_velFD(const mjModel* m, mjData* d, mjtNum eps) {
 
     // copy to i-th column of qDeriv
     for (int j=0; j < nv; j++) {
-      int adr = d->D_rowadr[j] + cnt[j];
-      if (cnt[j] < d->D_rownnz[j] && d->D_colind[adr] == i) {
+      int adr = m->D_rowadr[j] + cnt[j];
+      if (cnt[j] < m->D_rownnz[j] && m->D_colind[adr] == i) {
         d->qDeriv[adr] = fd[j];
         cnt[j]++;
       }
@@ -263,8 +262,8 @@ void mjd_smooth_velFD(const mjModel* m, mjData* d, mjtNum eps) {
 
     // copy to sparse qDeriv
     for (int j=0; j < nv; j++) {
-      if (cnt[j] < d->D_rownnz[j] && d->D_colind[d->D_rowadr[j]+cnt[j]] == i) {
-        d->qDeriv[d->D_rowadr[j]+cnt[j]] = fd[j];
+      if (cnt[j] < m->D_rownnz[j] && m->D_colind[m->D_rowadr[j]+cnt[j]] == i) {
+        d->qDeriv[m->D_rowadr[j]+cnt[j]] = fd[j];
         cnt[j]++;
       }
     }
@@ -272,7 +271,7 @@ void mjd_smooth_velFD(const mjModel* m, mjData* d, mjtNum eps) {
 
   // make sure final row counters equal rownnz
   for (int i=0; i < nv; i++) {
-    if (cnt[i] != d->D_rownnz[i]) {
+    if (cnt[i] != m->D_rownnz[i]) {
       mjERROR("error in constructing FD sparse derivative");
     }
   }

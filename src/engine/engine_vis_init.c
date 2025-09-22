@@ -83,7 +83,7 @@ const char* mjVISSTRING[mjNVISFLAG][3] = {
   {"Perturb Force",   "0", "B"},
   {"Perturb Object",  "1", "O"},
   {"Contact Point",   "0", "C"},
-  {"Island",          "1", ""},   // TODO(b/295296178): turn off after islands are on by default.
+  {"Island",          "0", "N"},
   {"Contact Force",   "0", "F"},
   {"Contact Split",   "0", "P"},
   {"Transparent",     "0", "T"},
@@ -97,7 +97,6 @@ const char* mjVISSTRING[mjNVISFLAG][3] = {
   {"Flex Face",       "0", ""},
   {"Flex Skin",       "1", ""},
   {"Body Tree",       "0", "`"},
-  {"Flex Tree",       "0", ""},
   {"Mesh Tree",       "0", "\\"},
   {"SDF iters",       "0", ""}
 };
@@ -464,7 +463,7 @@ float mjv_rbound(const mjvGeom* geom) {
 
   // compute rbound according to type
   const float* s = geom->size;
-  switch ((mjtMouse) geom->type) {
+  switch ((mjtGeom) geom->type) {
   case mjGEOM_SPHERE:
     return s[0];
 

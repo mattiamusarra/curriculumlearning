@@ -25,7 +25,7 @@
 #include <mujoco/mjmodel.h>
 #include "engine/engine_collision_gjk.h"
 #include "engine/engine_collision_primitive.h"
-#include "engine/engine_io.h"
+#include "engine/engine_memory.h"
 #include "engine/engine_util_blas.h"
 #include "engine/engine_util_errmem.h"
 #include "engine/engine_util_misc.h"
@@ -304,7 +304,7 @@ static void mjc_cylinderSupport(mjtNum res[3], mjCCDObj* obj, const mjtNum dir[3
   }
 
   // set result in Z direction
-  tmp[2] = mju_sign(local_dir[2]) * size[1];
+  tmp[2] = local_dir[2] >= 0 ? size[1] : -size[1];
 
   // transform result to global frame
   localToGlobal(res, mat, tmp, pos);

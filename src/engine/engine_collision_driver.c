@@ -26,10 +26,10 @@
 #include "engine/engine_collision_primitive.h"
 #include "engine/engine_collision_sdf.h"
 #include "engine/engine_core_constraint.h"
-#include "engine/engine_io.h"
+#include "engine/engine_core_util.h"
 #include "engine/engine_macro.h"
+#include "engine/engine_memory.h"
 #include "engine/engine_sort.h"
-#include "engine/engine_support.h"
 #include "engine/engine_util_blas.h"
 #include "engine/engine_util_errmem.h"
 #include "engine/engine_util_misc.h"
@@ -257,7 +257,7 @@ static inline int contactcompare(const mjContact* c1, const mjContact* c2, void*
 }
 
 // define contactSort function for sorting contacts
-mjSORT(contactSort, mjContact, contactcompare)
+mjSORT(contactSort, mjContact, contactcompare);
 
 
 
@@ -1012,7 +1012,7 @@ static inline int SAPcmp(mjtSAP* obj1, mjtSAP* obj2, void* context) {
 }
 
 // define SAPsort function for sorting SAP sorting
-mjSORT(SAPsort, mjtSAP, SAPcmp)
+mjSORT(SAPsort, mjtSAP, SAPcmp);
 
 
 // given list of axis-aligned bounding boxes in AAMM (xmin[3], xmax[3]) format,
@@ -1139,7 +1139,7 @@ static inline int uintcmp(int* i, int* j, void* context) {
 }
 
 // define bfsort function for sorting bodyflex pairs
-mjSORT(bfsort, int, uintcmp)
+mjSORT(bfsort, int, uintcmp);
 
 
 // broadphase collision detector

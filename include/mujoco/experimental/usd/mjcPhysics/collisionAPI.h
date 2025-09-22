@@ -40,7 +40,7 @@ class SdfAssetPath;
 
 /// \class MjcPhysicsCollisionAPI
 ///
-/// API describing a Mujoco collider.
+/// API describing a MuJoCo collider.
 ///
 class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
  public:
@@ -53,13 +53,13 @@ class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
   /// Equivalent to MjcPhysicsCollisionAPI::Get(prim.GetStage(), prim.GetPath())
   /// for a \em valid \p prim, but will not immediately throw an error for
   /// an invalid \p prim
-  explicit MjcPhysicsCollisionAPI(const UsdPrim &prim = UsdPrim())
+  explicit MjcPhysicsCollisionAPI(const UsdPrim& prim = UsdPrim())
       : UsdAPISchemaBase(prim) {}
 
   /// Construct a MjcPhysicsCollisionAPI on the prim held by \p schemaObj .
   /// Should be preferred over MjcPhysicsCollisionAPI(schemaObj.GetPrim()),
   /// as it preserves SchemaBase state.
-  explicit MjcPhysicsCollisionAPI(const UsdSchemaBase &schemaObj)
+  explicit MjcPhysicsCollisionAPI(const UsdSchemaBase& schemaObj)
       : UsdAPISchemaBase(schemaObj) {}
 
   /// Destructor.
@@ -70,7 +70,7 @@ class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
   /// class and all its ancestor classes.  Does not include attributes that
   /// may be authored by custom/extended methods of the schemas involved.
   MJCPHYSICS_API
-  static const TfTokenVector &GetSchemaAttributeNames(
+  static const TfTokenVector& GetSchemaAttributeNames(
       bool includeInherited = true);
 
   /// Return a MjcPhysicsCollisionAPI holding the prim adhering to this
@@ -83,8 +83,8 @@ class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
   /// \endcode
   ///
   MJCPHYSICS_API
-  static MjcPhysicsCollisionAPI Get(const UsdStagePtr &stage,
-                                    const SdfPath &path);
+  static MjcPhysicsCollisionAPI Get(const UsdStagePtr& stage,
+                                    const SdfPath& path);
 
   /// Returns true if this <b>single-apply</b> API schema can be applied to
   /// the given \p prim. If this schema can not be a applied to the prim,
@@ -103,7 +103,7 @@ class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static bool CanApply(const UsdPrim &prim, std::string *whyNot = nullptr);
+  static bool CanApply(const UsdPrim& prim, std::string* whyNot = nullptr);
 
   /// Applies this <b>single-apply</b> API schema to the given \p prim.
   /// This information is stored by adding "MjcCollisionAPI" to the
@@ -121,7 +121,7 @@ class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static MjcPhysicsCollisionAPI Apply(const UsdPrim &prim);
+  static MjcPhysicsCollisionAPI Apply(const UsdPrim& prim);
 
  protected:
   /// Returns the kind of schema this class belongs to.
@@ -134,13 +134,37 @@ class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
   // needs to invoke _GetStaticTfType.
   friend class UsdSchemaRegistry;
   MJCPHYSICS_API
-  static const TfType &_GetStaticTfType();
+  static const TfType& _GetStaticTfType();
 
   static bool _IsTypedSchema();
 
   // override SchemaBase virtuals.
   MJCPHYSICS_API
-  const TfType &_GetTfType() const override;
+  const TfType& _GetTfType() const override;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // GROUP
+  // --------------------------------------------------------------------- //
+  /// Integer MuJoCo group to which the collider belongs.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform int mjc:group = 0` |
+  /// | C++ Type | int |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetGroupAttr() const;
+
+  /// See GetGroupAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateGroupAttr(VtValue const& defaultValue = VtValue(),
+                               bool writeSparsely = false) const;
 
  public:
   // --------------------------------------------------------------------- //
@@ -164,8 +188,187 @@ class MjcPhysicsCollisionAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateShellInertiaAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateShellInertiaAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // PRIORITY
+  // --------------------------------------------------------------------- //
+  /// Priority determining how the properties of two colliders are combined to
+  /// form the properties of the contact.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform int mjc:priority = 0` |
+  /// | C++ Type | int |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetPriorityAttr() const;
+
+  /// See GetPriorityAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreatePriorityAttr(VtValue const& defaultValue = VtValue(),
+                                  bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // CONDIM
+  // --------------------------------------------------------------------- //
+  /// The dimensionality of the contact space for a dynamically generated
+  /// contact pair is set to the maximum of the condim values of the two
+  /// participating geoms.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform int mjc:condim = 3` |
+  /// | C++ Type | int |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetConDimAttr() const;
+
+  /// See GetConDimAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateConDimAttr(VtValue const& defaultValue = VtValue(),
+                                bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // SOLMIX
+  // --------------------------------------------------------------------- //
+  /// Specifies the weight used for averaging of contact parameters, and
+  /// interacts with the priority attribute.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double mjc:solmix = 1` |
+  /// | C++ Type | double |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetSolMixAttr() const;
+
+  /// See GetSolMixAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateSolMixAttr(VtValue const& defaultValue = VtValue(),
+                                bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // SOLREF
+  // --------------------------------------------------------------------- //
+  /// Specifies the weight used for averaging of contact parameters, and
+  /// interacts with the priority attribute.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double[] mjc:solref = [0.02, 1]` |
+  /// | C++ Type | VtArray<double> |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->DoubleArray |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetSolRefAttr() const;
+
+  /// See GetSolRefAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateSolRefAttr(VtValue const& defaultValue = VtValue(),
+                                bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // SOLIMP
+  // --------------------------------------------------------------------- //
+  /// Specifies the weight used for averaging of contact parameters, and
+  /// interacts with the priority attribute.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double[] mjc:solimp = [0.9, 0.95, 0.001, 0.5, 2]`
+  /// | | C++ Type | VtArray<double> | | \ref Usd_Datatypes "Usd Type" |
+  /// SdfValueTypeNames->DoubleArray | | \ref SdfVariability "Variability" |
+  /// SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetSolImpAttr() const;
+
+  /// See GetSolImpAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateSolImpAttr(VtValue const& defaultValue = VtValue(),
+                                bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // MARGIN
+  // --------------------------------------------------------------------- //
+  /// Distance threshold below which contacts are detected and included in the
+  /// global array mjData.contact.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double mjc:margin = 0` |
+  /// | C++ Type | double |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetMarginAttr() const;
+
+  /// See GetMarginAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateMarginAttr(VtValue const& defaultValue = VtValue(),
+                                bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // GAP
+  // --------------------------------------------------------------------- //
+  /// This attribute is used to enable the generation of inactive contacts,
+  /// i.e., contacts that are ignored by the constraint solver but are included
+  /// in mjData.contact for the purpose of custom computations. When this value
+  /// is positive, geom distances between margin and margin-gap correspond to
+  /// such inactive contacts.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double mjc:gap = 0` |
+  /// | C++ Type | double |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetGapAttr() const;
+
+  /// See GetGapAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateGapAttr(VtValue const& defaultValue = VtValue(),
+                             bool writeSparsely = false) const;
 
  public:
   // ===================================================================== //

@@ -2,34 +2,148 @@
 Changelog
 =========
 
-Upcoming version (not yet released)
+3.3.6 (September 15, 2025)
 -----------------------------------
 
 General
 ^^^^^^^
-- Added the :ref:`insidesite<sensor-insidesite>` sensor, for checking if an object is inside the volume of a site.
-  It is useful for triggering events in surrounding environment logic.
-- Removed the SdfLib plugin and the dependency on `SdfLib` <https://github.com/UPC-ViRVIG/SdfLib>`__. SDFs are now
-  supported natively in mjModel.
+1. Constraint island discovery and construction, previously an experimental feature, is now :ref:`documented<soIsland>`
+   and promoted to default; disable it with :ref:`option/flag/island <option-flag-island>`. We expect islanding to be
+   a strict improvement over the monolithic constraint solver, please let us know if you experience any issues.
+2. :ref:`Contact sensor<sensor-contact>` :at-val:`subtree1/subtree2` specification is now available for any body, not
+   just direct children of the world.
+
+.. admonition:: Breaking API changes
+   :class: attention
+
+   3. The update of ``mjData.qacc_warmstart`` was moved from the end of the solver call (:ref:`mj_fwdConstraint`) to
+      the end of :ref:`mj_step`, and is now updated with all other state variables. This change makes :ref:`mj_forward`
+      fully idempotent.
+
+      Before this change, calling :ref:`mj_forward` repeatedly would make the constraint solver converge,
+      since each subsequent call would start from the previously updated ``qacc_warmstart`` value.
+      Indeed, this is precisely what happened in the viewer, which calls :ref:`mj_forward` repeatedly in PAUSE mode.
+
+      **Migration:** If your code depended on this behavior, you can recover it by updating manually after each
+      :ref:`mj_forward`: ``qacc_warmstart ← qacc``. The behavior is available in :ref:`simulate<saSimulate>` by
+      clicking the "Pause update" toggle (off by default).
+
+      Furthermore, this change has a numerical impact on the output of the :ref:`RK4 <geIntegrators>` integrator.
+      Before this change, due to the ``qacc_warmstart`` update occurring after each of the four Runge-Kutta substeps,
+      the solver convergence of RK4 was faster, at the cost of unprincipled integration. This change makes the RK4
+      integration principled and well-defined. Since this change to RK4 is effectively a bug fix, migration to the
+      previous behavior is not provided.
+
+   4. The ``mjDSBL_PASSIVE`` flag for disabling passive forces was removed and replaced by
+      :ref:`mjDSBL_SPRING<mjtDisableBit>` and :ref:`mjDSBL_DAMPER<mjtDisableBit>` with corresponding
+      :ref:`mjcf<option-flag-spring>` :ref:`attributes<option-flag-damper>`. Each flag disables only joint and tendon
+      springs or dampers, respectively. When both flags are set, **all** passive forces are disabled, including gravity
+      compensation, fluid forces, forces computed by the :ref:`mjcb_passive` callback, and forces computed by
+      :ref:`plugins <exPlugin>` when passed the :ref:`mjPLUGIN_PASSIVE<mjtPluginCapabilityBit>` capability flag.
+
+     **Migration:** Set both flags to recover the behavior of the previous flag.
+
+
+.. admonition:: Breaking ABI changes
+   :class: attention
+
+   5. Removed ``mjMOUSE_SELECT`` flag for :ref:`mjtMouse` as it is no longer in use.
+
+   6. The promotion of islanding to default involved removing the enable flag ``mjENBL_ISLAND`` and
+      converting it to a disable flag :ref:`mjDSBL_ISLAND <mjtDisableBit>`.
+
+7. Added support for shells with a curved reference configuration. See this `example
+   <https://github.com/google-deepmind/mujoco/blob/main/model/flex/basket.xml>`__.
+8. Added experimental option for :ref:`passive<flex-contact-passive>` contacts involving flexes.
+
+9. Added support for assigning a default material to a mesh asset using the :ref:`mesh/material <asset-mesh-material>`
+   attribute.
+
+MJX
+^^^
+10. Promote ``ten_length`` to the public MJX API. Add Warp support for ``mjx.tendon``.
+
+.. admonition:: Breaking API changes
+   :class: attention
+
+   11. ``ten_length`` was moved from ``mjx.Data._impl.ten_length`` to a public field ``mjx.Data.ten_length``.
+
+Bug fixes
+^^^^^^^^^
+12. Fixed a latent bug where MjData objects were not serialized correctly by the Python bindings when islanding was
+    enabled.
+
+
+Version 3.3.5 (August 8, 2025)
+------------------------------
+
+General
+^^^^^^^
+1. Added the :ref:`insidesite<sensor-insidesite>` sensor, for checking if an object is inside the volume of a site.
+   It is useful for triggering events in surrounding environment logic.
+2. Added the :ref:`contact<sensor-contact>` sensor, for reporting contact information according to user-defined
+   criteria.
+   The purpose of the :el:`contact` sensor is to report contact-related information in a fixed-size array. This is
+   useful as input to learning-based agents and in environment logic.
+3. Added the :ref:`tactile<sensor-tactile>` sensor, for measuring the penetration depth between two objects at given
+   points and the sliding velocities in the tangent frame. The sensor reports tactile data only when colliding with
+   SDFs.
+4. Removed the SdfLib plugin and the dependency on `SdfLib <https://github.com/UPC-ViRVIG/SdfLib>`__. SDFs are now
+   supported natively in mjModel.
+5. Removed ``oct_depth`` from :ref:`mjvOption` (unused).
+6. Added the functionality to create a builtin meshes, see :ref:`mesh/builtin<asset-mesh-builtin>`.
+7. Inertia computation in MuJoCo C is now performed by a new :ref:`pipeline<piStages>` function :ref:`mj_makeM`, which
+   combines the Composite Rigid Body algorithm in :ref:`mj_crb` and additional terms related to
+   :ref:`tendon armature<tendon-spatial-armature>`. Code that uses :ref:`mj_crb` to compute the inertia should now use
+   :ref:`mj_makeM` instead.
+
+.. admonition:: Breaking API changes
+   :class: attention
+
+   8. Removed the ``mjVIS_FLEXBVH`` enum value, its functionality is now provided by :ref:`mjVIS_MESHBVH<mjtVisFlag>`.
+
+Bug fixes
+^^^^^^^^^
+9. Fixed a bug that caused object lists in the child to have missing elements after attaching an mjSpec. This was
+   caused by adding to the lists only the objects that belong to the tree of the requested body, but this causes to
+   skip objects that were attached, since they belong to the tree of the parent.
+10. Fixed a bug where the convex hull of a collision mesh was not being computed if the mesh could only collide via a
+    :ref:`contact pair<contact-pair>`.
+
+Python
+^^^^^^
+11. On Linux, built distribution packages (wheels) now target the ``manylinux_2_28`` platform tag. Previously MuJoCo
+    wheels targeted ``manylinux2014`` based on CentOS 7, which reached end-of-life in June 2024.
+
+MJX
+^^^
+12. Add Warp as a backend implementation for MJX. The implementation can be specified via
+    ``mjx.put_model(m, impl='warp')`` and ``mjx.make_data(m, impl='warp')``. The warp implementation requires
+    a CUDA device and ``warp-lang`` to be installed (``pip install mujoco-mjx[warp]``). This feature is available in
+    "beta" and some bugs are expected.
 
 Version 3.3.4 (July 8, 2025)
------------------------------------
+----------------------------
 
 .. admonition:: Breaking API changes
    :class: attention
 
    1. The functions ``mjs_detachBody`` and ``mjs_detachDefault`` have been replaced by :ref:`mjs_delete`.
    2. The Python functions ``element.delete`` have been replaced by ``spec.delete(element)``.
+   3. In the mjSpec C API, directly setting an element's name using :ref:`mjs_setString` has been replaced with a new
+      function :ref:`mjs_setName` which allows checking for naming collisions at set-time rather than compile-time, for
+      earlier catching of errors. Relatedly, the ``name`` attribute has been removed from all mjs elements. Known issue:
+      the error is not raised during parsing.
+   4. For MJX, the ``mjx.Option`` dataclass now has private and public fields similar to ``mjx.Model`` and
+      ``mjx.Data``. Some fields are no longer publicly available due to differences in the
+      underlying implementations of this data structure.
 
 General
 ^^^^^^^
-3. Added support for setting the initial camera in the viewer using
+4. Added support for setting the initial camera in the viewer using
    :ref:`visual/global/cameraid<visual-global-cameraid>`.
-4. Added support to only sync the state in the Python :ref:`passive viewer<PyViewerPassive>`'s ``Sync`` method, this is
+5. Added support to only sync the state in the Python :ref:`passive viewer<PyViewerPassive>`'s ``Sync`` method, this is
    useful to improve performance. The default behavior is unchanged and copies the entire model and data.
-5. In the mjSpec C API, directly setting an element's name using :ref:`mjs_setString` has been replaced with a new
-   function :ref:`mjs_setName` which allows checking for naming collisions at set-time rather than compile-time, for
-   earlier catching of errors.
 
 Bug fixes
 ^^^^^^^^^

@@ -139,6 +139,9 @@ MJAPI int mju_isZero(mjtNum* vec, int n);
 // set integer vector to 0
 MJAPI void mju_zeroInt(int* res, int n);
 
+// set mjtSize vector to 0
+MJAPI void mju_zeroSize(mjtSize* res, size_t n);
+
 // set size_t vector to 0
 MJAPI void mju_zeroSizeT(size_t* res, size_t n);
 
@@ -163,6 +166,9 @@ MJAPI void mju_n2d(double* res, const mjtNum* vec, int n);
 // gather mjtNums
 MJAPI void mju_gather(mjtNum* res, const mjtNum* vec, const int* ind, int n);
 
+// gather mjtNums, set to 0 at negative indices
+MJAPI void mju_gatherMasked(mjtNum* res, const mjtNum* vec, const int* ind, int n);
+
 // scatter mjtNums
 MJAPI void mju_scatter(mjtNum* res, const mjtNum* vec, const int* ind, int n);
 
@@ -171,6 +177,18 @@ MJAPI void mju_gatherInt(int* res, const int* vec, const int* ind, int n);
 
 // scatter integers
 MJAPI void mju_scatterInt(int* res, const int* vec, const int* ind, int n);
+
+// build gather indices mapping src to res, assumes pattern(res) \subseteq pattern(src)
+MJAPI void mju_sparseMap(int* map, int nr,
+                         const int* res_rowadr, const int* res_rownnz, const int* res_colind,
+                         const int* src_rowadr, const int* src_rownnz, const int* src_colind);
+
+// build masked-gather map to copy a lower-triangular src into symmetric res
+//  `cursor` is a preallocated buffer of size `nr`
+MJAPI void mju_lower2SymMap(int* map, int nr,
+                            const int* res_rowadr, const int* res_rownnz, const int* res_colind,
+                            const int* src_rowadr, const int* src_rownnz, const int* src_colind,
+                            int* cursor);
 
 // insertion sort, increasing order
 MJAPI void mju_insertionSort(mjtNum* list, int n);

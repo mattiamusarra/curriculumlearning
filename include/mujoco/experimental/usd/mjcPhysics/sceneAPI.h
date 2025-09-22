@@ -40,7 +40,7 @@ class SdfAssetPath;
 
 /// \class MjcPhysicsSceneAPI
 ///
-/// API providing global simulation options for Mujoco.
+/// API providing global simulation options for MuJoCo.
 ///
 /// For any described attribute \em Fallback \em Value or \em Allowed \em Values
 /// below that are text/tokens, the actual token is published and defined in
@@ -58,13 +58,13 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// Equivalent to MjcPhysicsSceneAPI::Get(prim.GetStage(), prim.GetPath())
   /// for a \em valid \p prim, but will not immediately throw an error for
   /// an invalid \p prim
-  explicit MjcPhysicsSceneAPI(const UsdPrim &prim = UsdPrim())
+  explicit MjcPhysicsSceneAPI(const UsdPrim& prim = UsdPrim())
       : UsdAPISchemaBase(prim) {}
 
   /// Construct a MjcPhysicsSceneAPI on the prim held by \p schemaObj .
   /// Should be preferred over MjcPhysicsSceneAPI(schemaObj.GetPrim()),
   /// as it preserves SchemaBase state.
-  explicit MjcPhysicsSceneAPI(const UsdSchemaBase &schemaObj)
+  explicit MjcPhysicsSceneAPI(const UsdSchemaBase& schemaObj)
       : UsdAPISchemaBase(schemaObj) {}
 
   /// Destructor.
@@ -75,7 +75,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// class and all its ancestor classes.  Does not include attributes that
   /// may be authored by custom/extended methods of the schemas involved.
   MJCPHYSICS_API
-  static const TfTokenVector &GetSchemaAttributeNames(
+  static const TfTokenVector& GetSchemaAttributeNames(
       bool includeInherited = true);
 
   /// Return a MjcPhysicsSceneAPI holding the prim adhering to this
@@ -88,7 +88,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// \endcode
   ///
   MJCPHYSICS_API
-  static MjcPhysicsSceneAPI Get(const UsdStagePtr &stage, const SdfPath &path);
+  static MjcPhysicsSceneAPI Get(const UsdStagePtr& stage, const SdfPath& path);
 
   /// Returns true if this <b>single-apply</b> API schema can be applied to
   /// the given \p prim. If this schema can not be a applied to the prim,
@@ -107,7 +107,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static bool CanApply(const UsdPrim &prim, std::string *whyNot = nullptr);
+  static bool CanApply(const UsdPrim& prim, std::string* whyNot = nullptr);
 
   /// Applies this <b>single-apply</b> API schema to the given \p prim.
   /// This information is stored by adding "MjcSceneAPI" to the
@@ -125,7 +125,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static MjcPhysicsSceneAPI Apply(const UsdPrim &prim);
+  static MjcPhysicsSceneAPI Apply(const UsdPrim& prim);
 
  protected:
   /// Returns the kind of schema this class belongs to.
@@ -138,13 +138,13 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   // needs to invoke _GetStaticTfType.
   friend class UsdSchemaRegistry;
   MJCPHYSICS_API
-  static const TfType &_GetStaticTfType();
+  static const TfType& _GetStaticTfType();
 
   static bool _IsTypedSchema();
 
   // override SchemaBase virtuals.
   MJCPHYSICS_API
-  const TfType &_GetTfType() const override;
+  const TfType& _GetTfType() const override;
 
  public:
   // --------------------------------------------------------------------- //
@@ -167,7 +167,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateTimestepAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateTimestepAttr(VtValue const& defaultValue = VtValue(),
                                   bool writeSparsely = false) const;
 
  public:
@@ -192,7 +192,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateApiRateAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateApiRateAttr(VtValue const& defaultValue = VtValue(),
                                  bool writeSparsely = false) const;
 
  public:
@@ -217,7 +217,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateImpRatioAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateImpRatioAttr(VtValue const& defaultValue = VtValue(),
                                   bool writeSparsely = false) const;
 
  public:
@@ -241,7 +241,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateWindAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateWindAttr(VtValue const& defaultValue = VtValue(),
                               bool writeSparsely = false) const;
 
  public:
@@ -265,7 +265,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMagneticAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMagneticAttr(VtValue const& defaultValue = VtValue(),
                                   bool writeSparsely = false) const;
 
  public:
@@ -289,7 +289,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateDensityAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateDensityAttr(VtValue const& defaultValue = VtValue(),
                                  bool writeSparsely = false) const;
 
  public:
@@ -313,7 +313,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateViscosityAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateViscosityAttr(VtValue const& defaultValue = VtValue(),
                                    bool writeSparsely = false) const;
 
  public:
@@ -338,7 +338,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateOMarginAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateOMarginAttr(VtValue const& defaultValue = VtValue(),
                                  bool writeSparsely = false) const;
 
  public:
@@ -363,7 +363,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateOSolRefAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateOSolRefAttr(VtValue const& defaultValue = VtValue(),
                                  bool writeSparsely = false) const;
 
  public:
@@ -388,7 +388,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateOSolImpAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateOSolImpAttr(VtValue const& defaultValue = VtValue(),
                                  bool writeSparsely = false) const;
 
  public:
@@ -413,7 +413,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateOFrictionAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateOFrictionAttr(VtValue const& defaultValue = VtValue(),
                                    bool writeSparsely = false) const;
 
  public:
@@ -439,7 +439,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateIntegratorAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateIntegratorAttr(VtValue const& defaultValue = VtValue(),
                                     bool writeSparsely = false) const;
 
  public:
@@ -464,7 +464,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateConeAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateConeAttr(VtValue const& defaultValue = VtValue(),
                               bool writeSparsely = false) const;
 
  public:
@@ -489,7 +489,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateJacobianAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateJacobianAttr(VtValue const& defaultValue = VtValue(),
                                   bool writeSparsely = false) const;
 
  public:
@@ -514,7 +514,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateSolverAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateSolverAttr(VtValue const& defaultValue = VtValue(),
                                 bool writeSparsely = false) const;
 
  public:
@@ -538,7 +538,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateIterationsAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateIterationsAttr(VtValue const& defaultValue = VtValue(),
                                     bool writeSparsely = false) const;
 
  public:
@@ -563,7 +563,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateToleranceAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateToleranceAttr(VtValue const& defaultValue = VtValue(),
                                    bool writeSparsely = false) const;
 
  public:
@@ -588,7 +588,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateLSIterationsAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateLSIterationsAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -613,7 +613,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateLSToleranceAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateLSToleranceAttr(VtValue const& defaultValue = VtValue(),
                                      bool writeSparsely = false) const;
 
  public:
@@ -638,7 +638,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateNoslipIterationsAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -663,7 +663,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateNoslipToleranceAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -674,7 +674,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   ///
   /// | ||
   /// | -- | -- |
-  /// | Declaration | `uniform int mjc:option:ccd_iterations = 50` |
+  /// | Declaration | `uniform int mjc:option:ccd_iterations = 35` |
   /// | C++ Type | int |
   /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
   /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
@@ -687,7 +687,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateCCDIterationsAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateCCDIterationsAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -712,7 +712,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateCCDToleranceAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateCCDToleranceAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -737,7 +737,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateSDFIterationsAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateSDFIterationsAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -762,7 +762,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateSDFInitPointsAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateSDFInitPointsAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -787,7 +787,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateActuatorGroupDisableAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -811,7 +811,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateConstraintFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateConstraintFlagAttr(VtValue const& defaultValue = VtValue(),
                                         bool writeSparsely = false) const;
 
  public:
@@ -835,7 +835,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateEqualityFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateEqualityFlagAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -860,7 +860,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateFrictionLossFlagAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -885,7 +885,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateLimitFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateLimitFlagAttr(VtValue const& defaultValue = VtValue(),
                                    bool writeSparsely = false) const;
 
  public:
@@ -910,33 +910,56 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateContactFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateContactFlagAttr(VtValue const& defaultValue = VtValue(),
                                      bool writeSparsely = false) const;
 
  public:
   // --------------------------------------------------------------------- //
-  // PASSIVEFLAG
+  // SPRINGFLAG
   // --------------------------------------------------------------------- //
-  /// Enables the simulation of joint and tendon spring-dampers, fluid dynamics
-  /// forces, and custom passive forces.
+  /// Enables the simulation of joint and tendon springs.
   ///
   /// | ||
   /// | -- | -- |
-  /// | Declaration | `uniform bool mjc:flag:passive = 1` |
+  /// | Declaration | `uniform bool mjc:flag:spring = 1` |
   /// | C++ Type | bool |
   /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
   /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
   MJCPHYSICS_API
-  UsdAttribute GetPassiveFlagAttr() const;
+  UsdAttribute GetSpringFlagAttr() const;
 
-  /// See GetPassiveFlagAttr(), and also
+  /// See GetSpringFlagAttr(), and also
   /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
   /// If specified, author \p defaultValue as the attribute's default,
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreatePassiveFlagAttr(VtValue const &defaultValue = VtValue(),
-                                     bool writeSparsely = false) const;
+  UsdAttribute CreateSpringFlagAttr(VtValue const& defaultValue = VtValue(),
+                                    bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // DAMPERFLAG
+  // --------------------------------------------------------------------- //
+  /// Enables the simulation of joint and tendon dampers.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:flag:damper = 1` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetDamperFlagAttr() const;
+
+  /// See GetDamperFlagAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateDamperFlagAttr(VtValue const& defaultValue = VtValue(),
+                                    bool writeSparsely = false) const;
 
  public:
   // --------------------------------------------------------------------- //
@@ -960,7 +983,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateGravityFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateGravityFlagAttr(VtValue const& defaultValue = VtValue(),
                                      bool writeSparsely = false) const;
 
  public:
@@ -985,7 +1008,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateClampCtrlFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateClampCtrlFlagAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -1010,7 +1033,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateWarmStartFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateWarmStartFlagAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -1036,7 +1059,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateFilterParentFlagAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -1061,7 +1084,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateActuationFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateActuationFlagAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -1086,7 +1109,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateRefSafeFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateRefSafeFlagAttr(VtValue const& defaultValue = VtValue(),
                                      bool writeSparsely = false) const;
 
  public:
@@ -1110,7 +1133,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateSensorFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateSensorFlagAttr(VtValue const& defaultValue = VtValue(),
                                     bool writeSparsely = false) const;
 
  public:
@@ -1135,7 +1158,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMidPhaseFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMidPhaseFlagAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -1160,7 +1183,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateNativeCCDFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateNativeCCDFlagAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -1185,7 +1208,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateEulerDampFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateEulerDampFlagAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -1210,7 +1233,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateAutoResetFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateAutoResetFlagAttr(VtValue const& defaultValue = VtValue(),
                                        bool writeSparsely = false) const;
 
  public:
@@ -1234,7 +1257,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateOverrideFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateOverrideFlagAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -1259,7 +1282,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateEnergyFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateEnergyFlagAttr(VtValue const& defaultValue = VtValue(),
                                     bool writeSparsely = false) const;
 
  public:
@@ -1283,7 +1306,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateFwdinvFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateFwdinvFlagAttr(VtValue const& defaultValue = VtValue(),
                                     bool writeSparsely = false) const;
 
  public:
@@ -1309,7 +1332,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateInvDiscreteFlagAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -1334,7 +1357,7 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMultiCCDFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMultiCCDFlagAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -1358,8 +1381,412 @@ class MjcPhysicsSceneAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateIslandFlagAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateIslandFlagAttr(VtValue const& defaultValue = VtValue(),
                                     bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // AUTOLIMITS
+  // --------------------------------------------------------------------- //
+  /// This attribute affects the behavior of attributes such as "limited" (on
+  /// MjcJointAPI), "forcelimited" "ctrllimited", and "actlimited" (on
+  /// MjcActuator). If True, these attributes are unnecessary and their value
+  /// will be inferred from the presence of their corresponding "range"
+  /// attribute. If False, no such inference will happen: For a joint to be
+  /// limited, both limited=True and range:min/max must be specified. In this
+  /// mode, it is an error to specify a range without a limit.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:compiler:autoLimits = 1` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetAutoLimitsAttr() const;
+
+  /// See GetAutoLimitsAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateAutoLimitsAttr(VtValue const& defaultValue = VtValue(),
+                                    bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // BOUNDMASS
+  // --------------------------------------------------------------------- //
+  /// This attribute imposes a lower bound on the mass of each body except for
+  /// the world body.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double mjc:compiler:boundMass = 0` |
+  /// | C++ Type | double |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetBoundMassAttr() const;
+
+  /// See GetBoundMassAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateBoundMassAttr(VtValue const& defaultValue = VtValue(),
+                                   bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // BOUNDINERTIA
+  // --------------------------------------------------------------------- //
+  /// This attribute imposes a lower bound on the diagonal inertia components of
+  /// each body except for the world body.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double mjc:compiler:boundInertia = 0` |
+  /// | C++ Type | double |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetBoundInertiaAttr() const;
+
+  /// See GetBoundInertiaAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateBoundInertiaAttr(VtValue const& defaultValue = VtValue(),
+                                      bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // SETTOTALMASS
+  // --------------------------------------------------------------------- //
+  /// If this value is positive, the compiler will scale the masses and inertias
+  /// of all bodies in the model, so that the total mass equals the value
+  /// specified here. The world body has mass 0 and does not participate in any
+  /// mass-related computations. This scaling is performed last, after all other
+  /// operations affecting the body mass and inertia. The same scaling operation
+  /// can be applied at runtime to the compiled mjModel with the function
+  /// mj_setTotalmass.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform double mjc:compiler:setTotalMass = -1` |
+  /// | C++ Type | double |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetSetTotalMassAttr() const;
+
+  /// See GetSetTotalMassAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateSetTotalMassAttr(VtValue const& defaultValue = VtValue(),
+                                      bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // USETHREAD
+  // --------------------------------------------------------------------- //
+  /// If this is True, the model compiler will run in multi-threaded mode.
+  /// Currently multi-threading is used for computing the length ranges of
+  /// actuators and for parallel loading of meshes.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:compiler:useThread = 1` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetUseThreadAttr() const;
+
+  /// See GetUseThreadAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateUseThreadAttr(VtValue const& defaultValue = VtValue(),
+                                   bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // BALANCEINERTIA
+  // --------------------------------------------------------------------- //
+  /// A valid diagonal inertia matrix must satisfy A+B>=C for all permutations
+  /// of the three diagonal elements. Some poorly designed models violate this
+  /// constraint, which will normally result in a compile error. If this
+  /// attribute is set to "true", the compiler will silently set all three
+  /// diagonal elements to their average value whenever the above condition is
+  /// violated.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:compiler:balanceInertia = 0` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetBalanceInertiaAttr() const;
+
+  /// See GetBalanceInertiaAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateBalanceInertiaAttr(VtValue const& defaultValue = VtValue(),
+                                        bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // ANGLE
+  // --------------------------------------------------------------------- //
+  /// This attribute specifies whether the angles in mjcPhysics attributes have
+  /// units of degrees or radians if not otherwise noted.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform token mjc:compiler:angle = "degree"` |
+  /// | C++ Type | TfToken |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  /// | \ref MjcPhysicsTokens "Allowed Values" | degree, radian |
+  MJCPHYSICS_API
+  UsdAttribute GetAngleAttr() const;
+
+  /// See GetAngleAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateAngleAttr(VtValue const& defaultValue = VtValue(),
+                               bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // FITAABB
+  // --------------------------------------------------------------------- //
+  /// The compiler is able to replace a mesh with a geometric primitive fitted
+  /// to that mesh. If this attribute is True, the fitting procedure uses the
+  /// axis-aligned bounding box (AABB) of the mesh. Otherwise it uses the
+  /// equivalent-inertia box of the mesh.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:compiler:fitAABB = 0` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetFitAABBAttr() const;
+
+  /// See GetFitAABBAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateFitAABBAttr(VtValue const& defaultValue = VtValue(),
+                                 bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // FUSESTATIC
+  // --------------------------------------------------------------------- //
+  /// This attribute controls a compiler optimization feature where static
+  /// bodies are fused with their parent, and any elements defined in those
+  /// bodies are reassigned to the parent. Static bodies are fused with their
+  /// parent unless
+  ///
+  /// * They are referenced by another element in the model.
+  ///
+  /// * They contain a site which is referenced by a force or torque sensor.
+  ///
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:compiler:fuseStatic = 0` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetFuseStaticAttr() const;
+
+  /// See GetFuseStaticAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateFuseStaticAttr(VtValue const& defaultValue = VtValue(),
+                                    bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // INERTIAFROMGEOM
+  // --------------------------------------------------------------------- //
+  /// This attribute controls the automatic inference of body masses and
+  /// inertias from geoms attached to the body. If this setting is "false", no
+  /// automatic inference is performed. In that case each body must have
+  /// explicitly defined mass and inertia with the inertial element, or else a
+  /// compile error will be generated. If this setting is "true", the mass and
+  /// inertia of each body will be inferred from the geoms attached to it,
+  /// overriding any values specified with the inertial element. The default
+  /// setting "auto" means that masses and inertias are inferred automatically
+  /// only when the inertial element is missing in the body definition. One
+  /// reason to set this attribute to "true" instead of "auto" is to override
+  /// inertial data imported from a poorly designed model.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform token mjc:compiler:inertiaFromGeom = "auto"` |
+  /// | C++ Type | TfToken |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  /// | \ref MjcPhysicsTokens "Allowed Values" | false, true, auto |
+  MJCPHYSICS_API
+  UsdAttribute GetInertiaFromGeomAttr() const;
+
+  /// See GetInertiaFromGeomAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateInertiaFromGeomAttr(
+      VtValue const& defaultValue = VtValue(),
+      bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // ALIGNFREE
+  // --------------------------------------------------------------------- //
+  /// This attribute toggles the default behaviour of an optimization that
+  /// applies to bodies with a free joint and no child bodies. When True, the
+  /// body frame and free joint will automatically be aligned with inertial
+  /// frame, which leads to both faster and more stable simulation.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:compiler:alignFree = 0` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetAlignFreeAttr() const;
+
+  /// See GetAlignFreeAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateAlignFreeAttr(VtValue const& defaultValue = VtValue(),
+                                   bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // INERTIAGROUPRANGEMIN
+  // --------------------------------------------------------------------- //
+  /// This attribute specifies the maximum of the geom group range that is used
+  /// to infer body masses and inertias (when such inference is enabled). The
+  /// group attribute of geom is an integer. If this integer falls in the range
+  /// specified here, the collider will be used in the inertial computation,
+  /// otherwise it will be ignored. Note that the world body does not
+  /// participate in the inertial computations, so any geoms attached to it are
+  /// automatically ignored. Therefore it is not necessary to adjust this
+  /// attribute and the geom-specific groups so as to exclude world geoms from
+  /// the inertial computation.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform int mjc:compiler:inertiaGroupRange:min = 0` |
+  /// | C++ Type | int |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetInertiaGroupRangeMinAttr() const;
+
+  /// See GetInertiaGroupRangeMinAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateInertiaGroupRangeMinAttr(
+      VtValue const& defaultValue = VtValue(),
+      bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // INERTIAGROUPRANGEMAX
+  // --------------------------------------------------------------------- //
+  /// This attribute specifies the maximum of the geom group range that is used
+  /// to infer body masses and inertias (when such inference is enabled). The
+  /// group attribute of geom is an integer. If this integer falls in the range
+  /// specified here, the geom will be used in the inertial computation,
+  /// otherwise it will be ignored. This feature is useful in models that have
+  /// redundant sets of geoms for collision and visualization. Note that the
+  /// world body does not participate in the inertial computations, so any geoms
+  /// attached to it are automatically ignored. Therefore it is not necessary to
+  /// adjust this attribute and the geom-specific groups so as to exclude world
+  /// geoms from the inertial computation.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform int mjc:compiler:inertiaGroupRange:max = 5` |
+  /// | C++ Type | int |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetInertiaGroupRangeMaxAttr() const;
+
+  /// See GetInertiaGroupRangeMaxAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateInertiaGroupRangeMaxAttr(
+      VtValue const& defaultValue = VtValue(),
+      bool writeSparsely = false) const;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // SAVEINERTIAL
+  // --------------------------------------------------------------------- //
+  /// If True, the compiler will save explicit inertial clauses for all bodies.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform bool mjc:compiler:saveInertial = 0` |
+  /// | C++ Type | bool |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetSaveInertialAttr() const;
+
+  /// See GetSaveInertialAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateSaveInertialAttr(VtValue const& defaultValue = VtValue(),
+                                      bool writeSparsely = false) const;
 
  public:
   // ===================================================================== //

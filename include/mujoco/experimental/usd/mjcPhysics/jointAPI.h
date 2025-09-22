@@ -40,7 +40,7 @@ class SdfAssetPath;
 
 /// \class MjcPhysicsJointAPI
 ///
-/// API describing a Mujoco joint.
+/// API describing a MuJoCo joint.
 ///
 /// For any described attribute \em Fallback \em Value or \em Allowed \em Values
 /// below that are text/tokens, the actual token is published and defined in
@@ -58,13 +58,13 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// Equivalent to MjcPhysicsJointAPI::Get(prim.GetStage(), prim.GetPath())
   /// for a \em valid \p prim, but will not immediately throw an error for
   /// an invalid \p prim
-  explicit MjcPhysicsJointAPI(const UsdPrim &prim = UsdPrim())
+  explicit MjcPhysicsJointAPI(const UsdPrim& prim = UsdPrim())
       : UsdAPISchemaBase(prim) {}
 
   /// Construct a MjcPhysicsJointAPI on the prim held by \p schemaObj .
   /// Should be preferred over MjcPhysicsJointAPI(schemaObj.GetPrim()),
   /// as it preserves SchemaBase state.
-  explicit MjcPhysicsJointAPI(const UsdSchemaBase &schemaObj)
+  explicit MjcPhysicsJointAPI(const UsdSchemaBase& schemaObj)
       : UsdAPISchemaBase(schemaObj) {}
 
   /// Destructor.
@@ -75,7 +75,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// class and all its ancestor classes.  Does not include attributes that
   /// may be authored by custom/extended methods of the schemas involved.
   MJCPHYSICS_API
-  static const TfTokenVector &GetSchemaAttributeNames(
+  static const TfTokenVector& GetSchemaAttributeNames(
       bool includeInherited = true);
 
   /// Return a MjcPhysicsJointAPI holding the prim adhering to this
@@ -88,7 +88,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// \endcode
   ///
   MJCPHYSICS_API
-  static MjcPhysicsJointAPI Get(const UsdStagePtr &stage, const SdfPath &path);
+  static MjcPhysicsJointAPI Get(const UsdStagePtr& stage, const SdfPath& path);
 
   /// Returns true if this <b>single-apply</b> API schema can be applied to
   /// the given \p prim. If this schema can not be a applied to the prim,
@@ -107,7 +107,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static bool CanApply(const UsdPrim &prim, std::string *whyNot = nullptr);
+  static bool CanApply(const UsdPrim& prim, std::string* whyNot = nullptr);
 
   /// Applies this <b>single-apply</b> API schema to the given \p prim.
   /// This information is stored by adding "MjcJointAPI" to the
@@ -125,7 +125,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static MjcPhysicsJointAPI Apply(const UsdPrim &prim);
+  static MjcPhysicsJointAPI Apply(const UsdPrim& prim);
 
  protected:
   /// Returns the kind of schema this class belongs to.
@@ -138,13 +138,37 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   // needs to invoke _GetStaticTfType.
   friend class UsdSchemaRegistry;
   MJCPHYSICS_API
-  static const TfType &_GetStaticTfType();
+  static const TfType& _GetStaticTfType();
 
   static bool _IsTypedSchema();
 
   // override SchemaBase virtuals.
   MJCPHYSICS_API
-  const TfType &_GetTfType() const override;
+  const TfType& _GetTfType() const override;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // GROUP
+  // --------------------------------------------------------------------- //
+  /// Integer MuJoCo group to which the joint belongs.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform int mjc:group = 0` |
+  /// | C++ Type | int |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetGroupAttr() const;
+
+  /// See GetGroupAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateGroupAttr(VtValue const& defaultValue = VtValue(),
+                               bool writeSparsely = false) const;
 
  public:
   // --------------------------------------------------------------------- //
@@ -174,7 +198,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcSpringdamperAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -198,7 +222,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcSolreflimitAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcSolreflimitAttr(VtValue const& defaultValue = VtValue(),
                                         bool writeSparsely = false) const;
 
  public:
@@ -222,7 +246,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcSolimplimitAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcSolimplimitAttr(VtValue const& defaultValue = VtValue(),
                                         bool writeSparsely = false) const;
 
  public:
@@ -247,7 +271,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcSolreffrictionAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -272,7 +296,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcSolimpfrictionAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -298,7 +322,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcStiffnessAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcStiffnessAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -328,7 +352,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcActuatorfrcrangeMinAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -358,7 +382,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcActuatorfrcrangeMaxAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -391,7 +415,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcActuatorfrclimitedAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -424,7 +448,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcActuatorgravcompAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:
@@ -452,7 +476,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcMarginAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcMarginAttr(VtValue const& defaultValue = VtValue(),
                                    bool writeSparsely = false) const;
 
  public:
@@ -482,7 +506,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcRefAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcRefAttr(VtValue const& defaultValue = VtValue(),
                                 bool writeSparsely = false) const;
 
  public:
@@ -513,7 +537,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcSpringrefAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcSpringrefAttr(VtValue const& defaultValue = VtValue(),
                                       bool writeSparsely = false) const;
 
  public:
@@ -544,7 +568,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcArmatureAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcArmatureAttr(VtValue const& defaultValue = VtValue(),
                                      bool writeSparsely = false) const;
 
  public:
@@ -573,7 +597,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
-  UsdAttribute CreateMjcDampingAttr(VtValue const &defaultValue = VtValue(),
+  UsdAttribute CreateMjcDampingAttr(VtValue const& defaultValue = VtValue(),
                                     bool writeSparsely = false) const;
 
  public:
@@ -601,7 +625,7 @@ class MjcPhysicsJointAPI : public UsdAPISchemaBase {
   /// the default for \p writeSparsely is \c false.
   MJCPHYSICS_API
   UsdAttribute CreateMjcFrictionlossAttr(
-      VtValue const &defaultValue = VtValue(),
+      VtValue const& defaultValue = VtValue(),
       bool writeSparsely = false) const;
 
  public:

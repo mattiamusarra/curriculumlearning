@@ -35,16 +35,16 @@ set(MUJOCO_DEP_VERSION_ccd
     CACHE STRING "Version of `ccd` to be fetched."
 )
 set(MUJOCO_DEP_VERSION_qhull
-    c7bee59d068a69f427b1273e71cdc5bc455a5bdd
+    62ccc56af071eaa478bef6ed41fd7a55d3bb2d80
     CACHE STRING "Version of `qhull` to be fetched."
 )
 set(MUJOCO_DEP_VERSION_Eigen3
-    81044ec13df7608d0d9d86aff2ef9805fc69bed1
+    4be7e6b4e0a82853e853c0c7c4ef72f395e1f497
     CACHE STRING "Version of `Eigen3` to be fetched."
 )
 
 set(MUJOCO_DEP_VERSION_abseil
-    76bb24329e8bf5f39704eb10d21b9a80befa7c81 # LTS 20250512.0
+    987c57f325f7fa8472fa84e1f885f7534d391b0d # LTS 20250814.0
     CACHE STRING "Version of `abseil` to be fetched."
 )
 
@@ -168,6 +168,11 @@ findorfetch(
 target_compile_options(tinyxml2 PRIVATE ${MUJOCO_MACOS_COMPILE_OPTIONS})
 target_link_options(tinyxml2 PRIVATE ${MUJOCO_MACOS_LINK_OPTIONS})
 
+# update cmake_minimum_required version for compatibility with newer version of cmake
+if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_POLICY_VERSION_MINIMUM ${MUJOCO_CMAKE_MIN_REQ})
+  set(CMAKE_POLICY_VERSION_MINIMUM_LOCALLY_DEFINED ON)
+endif()
 findorfetch(
   USE_SYSTEM_PACKAGE
   OFF
@@ -183,6 +188,10 @@ findorfetch(
   tinyobjloader
   EXCLUDE_FROM_ALL
 )
+if(CMAKE_POLICY_VERSION_MINIMUM_LOCALLY_DEFINED)
+  unset(CMAKE_POLICY_VERSION_MINIMUM)
+  unset(CMAKE_POLICY_VERSION_MINIMUM_LOCALLY_DEFINED)
+endif()
 
 if(NOT TARGET trianglemeshdistance)
   FetchContent_Declare(
@@ -200,6 +209,11 @@ endif()
 
 set(ENABLE_DOUBLE_PRECISION ON)
 set(CCD_HIDE_ALL_SYMBOLS ON)
+# update cmake_minimum_required version for compatibility with newer version of cmake
+if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_POLICY_VERSION_MINIMUM ${MUJOCO_CMAKE_MIN_REQ})
+  set(CMAKE_POLICY_VERSION_MINIMUM_LOCALLY_DEFINED ON)
+endif()
 findorfetch(
   USE_SYSTEM_PACKAGE
   OFF
@@ -215,6 +229,10 @@ findorfetch(
   ccd
   EXCLUDE_FROM_ALL
 )
+if(CMAKE_POLICY_VERSION_MINIMUM_LOCALLY_DEFINED)
+  unset(CMAKE_POLICY_VERSION_MINIMUM)
+  unset(CMAKE_POLICY_VERSION_MINIMUM_LOCALLY_DEFINED)
+endif()
 target_compile_options(ccd PRIVATE ${MUJOCO_MACOS_COMPILE_OPTIONS})
 target_link_options(ccd PRIVATE ${MUJOCO_MACOS_LINK_OPTIONS})
 

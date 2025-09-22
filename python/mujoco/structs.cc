@@ -16,6 +16,7 @@
 
 #include <Python.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <ios>
 #include <iostream>
@@ -728,7 +729,12 @@ This is useful for example when the MJB is not available as a file on disk.)"));
 
   // ==================== MJDATA ===============================================
   py::class_<MjDataWrapper> mjData(m, "MjData");
-  mjData.def(py::init<MjModelWrapper*>());
+  mjData.def(py::init([](MjModelWrapper* m) {
+    if (!m) {
+      throw py::type_error("MjModel cannot be None");
+    }
+    return MjDataWrapper(m);
+  }));
   mjData.def_property_readonly("_address", [](const MjDataWrapper& d) {
     return reinterpret_cast<std::uintptr_t>(d.get());
   });
@@ -1071,6 +1077,7 @@ This is useful for example when the MJB is not available as a file on disk.)"));
       [](MjvLightWrapper& c, decltype(raw::MjvLight::var) rhs) {   \
         c.get()->var = rhs;                                        \
       })
+  X(id);
   X(cutoff);
   X(exponent);
   X(headlight);
@@ -1110,7 +1117,6 @@ This is useful for example when the MJB is not available as a file on disk.)"));
   X(label);
   X(frame);
   X(bvh_depth);
-  X(oct_depth);
   X(flex_layer);
 #undef X
 

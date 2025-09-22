@@ -1925,6 +1925,48 @@ TEST_F(XMLReaderTest, LookupCompilerOptionWithoutSpecCopy) {
   mj_deleteVFS(vfs.get());
 }
 
+TEST_F(XMLReaderTest, ResizeKeyframeAfterParsing) {
+  static constexpr char parent_xml[] = R"(
+  <mujoco>
+    <asset>
+      <model name="child" file="child.xml"/>
+    </asset>
+    <worldbody>
+      <attach model="child" body="world" prefix="child_"/>
+      <body name="body">
+        <joint name="joint"/>
+        <geom size="1"/>
+      </body>
+    </worldbody>
+    <keyframe>
+      <key name="key" qpos="1"/>
+    </keyframe>
+  </mujoco>
+  )";
+
+  static constexpr char child_xml[] = R"(
+  <mujoco>
+    <worldbody>
+      <body name="body">
+        <joint name="joint"/>
+        <geom size="1"/>
+      </body>
+    </worldbody>
+  </mujoco>
+  )";
+
+  auto vfs = std::make_unique<mjVFS>();
+  mj_defaultVFS(vfs.get());
+  mj_addBufferVFS(vfs.get(), "child.xml", child_xml, sizeof(child_xml));
+
+  std::array<char, 1024> error;
+  mjModel* m =
+      LoadModelFromString(parent_xml, error.data(), error.size(), vfs.get());
+  EXPECT_THAT(m, NotNull()) << error.data();
+  mj_deleteModel(m);
+  mj_deleteVFS(vfs.get());
+}
+
 // ----------------------- test camera parsing ---------------------------------
 
 TEST_F(XMLReaderTest, CameraInvalidFovyAndSensorsize) {
@@ -2021,6 +2063,100 @@ TEST_F(XMLReaderTest, ReadShellParameter) {
   mj_deleteModel(model);
 }
 
+// ----------------------- test builtin mesh parsing ---------------------------
+
+TEST_F(XMLReaderTest, ReadWedgeMesh) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <asset>
+      <mesh name="wedge" builtin="wedge" params="25 25 180 90 0"/>
+    </asset>
+    <worldbody>
+      <geom type="mesh" mesh="wedge"/>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  mjModel* model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, NotNull()) << error.data();
+  mj_deleteModel(model);
+}
+
+TEST_F(XMLReaderTest, BuiltinAndFile) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <asset>
+      <mesh name="wedge" builtin="wedge" vertex="0 0 0 1 0 0 0 1 0 0 1 0"
+            params="25 25 180 90 0"/>
+    </asset>
+    <worldbody>
+      <geom type="mesh" mesh="wedge"/>
+    </worldbody>
+  </mujoco>
+  )";
+  std::array<char, 1024> error;
+  mjModel* model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, IsNull());
+  EXPECT_THAT(error.data(),
+              HasSubstr("builtin mesh cannot be used with user vertex data"));
+  mj_deleteModel(model);
+}
+
+TEST_F(XMLReaderTest, MakePlateNoParameters) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <asset>
+      <mesh name="plate" builtin="plate"/>
+    </asset>
+    <worldbody>
+      <geom type="mesh" mesh="plate" contype="0" conaffinity="0"/>
+    </worldbody>
+  </mujoco>)";
+  std::array<char, 1024> error;
+  mjModel* model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, IsNull());
+  EXPECT_THAT(error.data(), HasSubstr("required attribute missing: 'params'"));
+  mj_deleteModel(model);
+}
+
+TEST_F(XMLReaderTest, MakePlateTooFewParameters) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <asset>
+      <mesh name="plate" builtin="plate" params="1"/>
+    </asset>
+    <worldbody>
+      <geom type="mesh" mesh="plate" contype="0" conaffinity="0"/>
+    </worldbody>
+  </mujoco>)";
+  std::array<char, 1024> error;
+  mjModel* model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, IsNull());
+  EXPECT_THAT(
+      error.data(),
+      HasSubstr("Plate builtin mesh type requires 2 parameters"));
+  mj_deleteModel(model);
+}
+
+TEST_F(XMLReaderTest, MakePlateInvalidParameters) {
+  static constexpr char xml[] = R"(
+  <mujoco>
+    <asset>
+      <mesh name="plate" builtin="plate" params="-1 -1"/>
+    </asset>
+    <worldbody>
+      <geom type="mesh" mesh="plate" contype="0" conaffinity="0"/>
+    </worldbody>
+  </mujoco>)";
+  std::array<char, 1024> error;
+  mjModel* model = LoadModelFromString(xml, error.data(), error.size());
+  ASSERT_THAT(model, IsNull());
+  EXPECT_THAT(error.data(), HasSubstr("resolutions must be positive"));
+  mj_deleteModel(model);
+}
+
+// ----------------------- test skin parsing --------------------------------
+
 TEST_F(XMLReaderTest, ReadsSkinGroups) {
   static constexpr char xml[] = R"(
   <mujoco>
@@ -2098,7 +2234,7 @@ TEST_F(XMLReaderTest, ReadsSkinGroups) {
   )";
   std::array<char, 1024> error;
   mjModel* model = LoadModelFromString(xml, error.data(), error.size());
-  ASSERT_THAT(model, NotNull());
+  ASSERT_THAT(model, NotNull()) << error.data();
   int flexid1 = mj_name2id(model, mjOBJ_FLEX, "B0");
   int flexid2 = mj_name2id(model, mjOBJ_FLEX, "B1");
   EXPECT_THAT(model->flex_group[flexid1], 2);
@@ -2748,7 +2884,7 @@ TEST_F(ActuatorParseTest, IntvelocityDefaultsPropagate) {
   )";
   std::array<char, 1024> error;
   mjModel* model = LoadModelFromString(xml, error.data(), error.size());
-  ASSERT_THAT(model, NotNull());
+  ASSERT_THAT(model, NotNull()) << error.data();
   EXPECT_DOUBLE_EQ(model->actuator_gainprm[0], 5);
   EXPECT_DOUBLE_EQ(model->actuator_gainprm[mjNGAIN], 1);
   EXPECT_DOUBLE_EQ(model->actuator_actrange[0 + 0], 0);

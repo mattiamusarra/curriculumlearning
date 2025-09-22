@@ -84,9 +84,10 @@ TF_DEFINE_PRIVATE_TOKENS(kTokens,
                          ((light, "Light"))
                          ((meshScope, "MeshSources"))
                          ((materialsScope, "Materials"))
+                         ((physicsMaterialsScope, "PhysicsMaterials"))
                          ((previewSurface, "PreviewSurface"))
                          ((keyframesScope, "Keyframes"))
-                         ((transmissionsScope, "Transmissions"))
+                         ((actuatorsScope, "Actuators"))
                          ((keyframe, "Keyframe"))
                          ((surface, "PreviewSurface"))
                          ((world, "World"))
@@ -181,10 +182,7 @@ class ModelWriter {
   }
   ~ModelWriter() { mj_deleteModel(model_); }
 
-  void Write(bool write_physics) {
-    // Set working parameters.
-    write_physics_ = write_physics;
-
+  void Write() {
     // Create top level class holder.
     class_path_ = CreateClassSpec(data_, pxr::SdfPath::AbsoluteRootPath(),
                                   pxr::TfToken("__class__"));
@@ -210,9 +208,7 @@ class ModelWriter {
     WriteMeshes();
     WriteMaterials();
     WriteBodies();
-    if (write_physics_) {
-      WriteTransmissions();
-    }
+    WriteActuators();
     WriteKeyframes();
   }
 
@@ -235,8 +231,6 @@ class ModelWriter {
   std::unordered_map<std::string, pxr::SdfPath> mesh_paths_;
   // Set of body ids that have had the articulation root API applied.
   std::unordered_set<int> articulation_roots_;
-  // Whether to write physics data.
-  bool write_physics_ = false;
 
   // Given a name index and a parent prim path this returns a
   // token such that appending it to the parent prim path does not
@@ -316,6 +310,34 @@ class ModelWriter {
     SetAttributeDefault(data_, attr_path, value);
   }
 
+  template <typename T>
+  void WriteColorAndOpacityAttributes(const pxr::SdfPath &prim_path,
+                                      const T &element) {
+    // If rgba is not the default (0.5, 0.5, 0.5, 1), then set the
+    // displayColor attribute.
+    // No effort is made to properly handle the interaction between rgba
+    // and the material if both are specified.
+    if (element->rgba[0] != 0.5f || element->rgba[1] != 0.5f ||
+        element->rgba[2] != 0.5f || element->rgba[3] != 1.0f) {
+      // Set the displayColor attribute.
+      pxr::SdfPath display_color_attr = CreateAttributeSpec(
+          data_, prim_path, pxr::UsdGeomTokens->primvarsDisplayColor,
+          pxr::SdfValueTypeNames->Color3fArray);
+      SetAttributeDefault(
+          data_, display_color_attr,
+          pxr::VtArray<pxr::GfVec3f>{
+              {element->rgba[0], element->rgba[1], element->rgba[2]}});
+      // Set the displayOpacity attribute, only if the opacity is not 1.
+      if (element->rgba[3] != 1.0f) {
+        pxr::SdfPath display_opacity_attr = CreateAttributeSpec(
+            data_, prim_path, pxr::UsdGeomTokens->primvarsDisplayOpacity,
+            pxr::SdfValueTypeNames->FloatArray);
+        SetAttributeDefault(data_, display_opacity_attr,
+                            pxr::VtArray<float>{element->rgba[3]});
+      }
+    }
+  }
+
   void PrependToXformOpOrder(const pxr::SdfPath &prim_path,
                              const pxr::VtArray<pxr::TfToken> &order) {
     auto xform_op_order_path =
@@ -347,25 +369,22 @@ class ModelWriter {
                        pxr::UsdGeomTokens->Mesh);
     mesh_paths_[*mjs_getName(mesh->element)] = subcomponent_path;
 
-    if (write_physics_) {
-      ApplyApiSchema(data_, mesh_path, MjcPhysicsTokens->MjcMeshCollisionAPI);
+    ApplyApiSchema(data_, mesh_path, MjcPhysicsTokens->MjcMeshCollisionAPI);
 
-      pxr::TfToken inertia = MjcPhysicsTokens->legacy;
-      if (mesh->inertia == mjtMeshInertia::mjMESH_INERTIA_EXACT) {
-        inertia = MjcPhysicsTokens->exact;
-      } else if (mesh->inertia == mjtMeshInertia::mjMESH_INERTIA_CONVEX) {
-        inertia = MjcPhysicsTokens->convex;
-      } else if (mesh->inertia == mjtMeshInertia::mjMESH_INERTIA_SHELL) {
-        inertia = MjcPhysicsTokens->shell;
-      }
-
-      WriteUniformAttribute(mesh_path, pxr::SdfValueTypeNames->Token,
-                            MjcPhysicsTokens->mjcInertia, inertia);
-
-      WriteUniformAttribute(mesh_path, pxr::SdfValueTypeNames->Int,
-                            MjcPhysicsTokens->mjcMaxhullvert,
-                            mesh->maxhullvert);
+    pxr::TfToken inertia = MjcPhysicsTokens->legacy;
+    if (mesh->inertia == mjtMeshInertia::mjMESH_INERTIA_EXACT) {
+      inertia = MjcPhysicsTokens->exact;
+    } else if (mesh->inertia == mjtMeshInertia::mjMESH_INERTIA_CONVEX) {
+      inertia = MjcPhysicsTokens->convex;
+    } else if (mesh->inertia == mjtMeshInertia::mjMESH_INERTIA_SHELL) {
+      inertia = MjcPhysicsTokens->shell;
     }
+
+    WriteUniformAttribute(mesh_path, pxr::SdfValueTypeNames->Token,
+                          MjcPhysicsTokens->mjcInertia, inertia);
+
+    WriteUniformAttribute(mesh_path, pxr::SdfValueTypeNames->Int,
+                          MjcPhysicsTokens->mjcMaxhullvert, mesh->maxhullvert);
 
     // NOTE: The geometry data taken from the spec is the post-compilation
     // data after it has been mjCMesh::Compile'd. So don't be surprised if
@@ -624,7 +643,6 @@ class ModelWriter {
 
     const std::vector<std::pair<pxr::TfToken, int>> enable_flags = {
         {MjcPhysicsTokens->mjcFlagMulticcd, mjENBL_MULTICCD},
-        {MjcPhysicsTokens->mjcFlagIsland, mjENBL_ISLAND},
         {MjcPhysicsTokens->mjcFlagFwdinv, mjENBL_FWDINV},
         {MjcPhysicsTokens->mjcFlagEnergy, mjENBL_ENERGY},
         {MjcPhysicsTokens->mjcFlagOverride, mjENBL_OVERRIDE},
@@ -639,7 +657,8 @@ class ModelWriter {
         {MjcPhysicsTokens->mjcFlagFrictionloss, mjDSBL_FRICTIONLOSS},
         {MjcPhysicsTokens->mjcFlagLimit, mjDSBL_LIMIT},
         {MjcPhysicsTokens->mjcFlagContact, mjDSBL_CONTACT},
-        {MjcPhysicsTokens->mjcFlagPassive, mjDSBL_PASSIVE},
+        {MjcPhysicsTokens->mjcFlagSpring, mjDSBL_SPRING},
+        {MjcPhysicsTokens->mjcFlagDamper, mjDSBL_DAMPER},
         {MjcPhysicsTokens->mjcFlagGravity, mjDSBL_GRAVITY},
         {MjcPhysicsTokens->mjcFlagClampctrl, mjDSBL_CLAMPCTRL},
         {MjcPhysicsTokens->mjcFlagWarmstart, mjDSBL_WARMSTART},
@@ -650,10 +669,77 @@ class ModelWriter {
         {MjcPhysicsTokens->mjcFlagMidphase, mjDSBL_MIDPHASE},
         {MjcPhysicsTokens->mjcFlagEulerdamp, mjDSBL_EULERDAMP},
         {MjcPhysicsTokens->mjcFlagAutoreset, mjDSBL_AUTORESET},
-        {MjcPhysicsTokens->mjcFlagNativeccd, mjDSBL_NATIVECCD}};
+        {MjcPhysicsTokens->mjcFlagNativeccd, mjDSBL_NATIVECCD},
+        {MjcPhysicsTokens->mjcFlagIsland, mjDSBL_ISLAND}};
     for (const auto &[token, flag] : disable_flags) {
       create_flag_attr(token, flag, false);
     }
+
+    // Compiler attributes
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Bool,
+                          MjcPhysicsTokens->mjcCompilerAutoLimits,
+                          (bool)spec_->compiler.autolimits);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Double,
+                          MjcPhysicsTokens->mjcCompilerBoundMass,
+                          spec_->compiler.boundmass);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Double,
+                          MjcPhysicsTokens->mjcCompilerBoundInertia,
+                          spec_->compiler.boundinertia);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Double,
+                          MjcPhysicsTokens->mjcCompilerSetTotalMass,
+                          spec_->compiler.settotalmass);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Bool,
+                          MjcPhysicsTokens->mjcCompilerUseThread,
+                          (bool)spec_->compiler.usethread);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Bool,
+                          MjcPhysicsTokens->mjcCompilerBalanceInertia,
+                          (bool)spec_->compiler.balanceinertia);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Token,
+                          MjcPhysicsTokens->mjcCompilerAngle,
+                          spec_->compiler.degree ? MjcPhysicsTokens->degree
+                                                 : MjcPhysicsTokens->radian);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Bool,
+                          MjcPhysicsTokens->mjcCompilerFitAABB,
+                          (bool)spec_->compiler.fitaabb);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Bool,
+                          MjcPhysicsTokens->mjcCompilerFuseStatic,
+                          (bool)spec_->compiler.fusestatic);
+
+    pxr::TfToken inertiafromgeom_token = MjcPhysicsTokens->auto_;
+    if (spec_->compiler.inertiafromgeom ==
+        mjINERTIAFROMGEOM_TRUE) {  // mjINERTIA_TRUE
+      inertiafromgeom_token = MjcPhysicsTokens->true_;
+    } else if (spec_->compiler.inertiafromgeom ==
+               mjINERTIAFROMGEOM_FALSE) {  // mjINERTIA_FALSE
+      inertiafromgeom_token = MjcPhysicsTokens->false_;
+    }
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Token,
+                          MjcPhysicsTokens->mjcCompilerInertiaFromGeom,
+                          inertiafromgeom_token);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Bool,
+                          MjcPhysicsTokens->mjcCompilerAlignFree,
+                          (bool)spec_->compiler.alignfree);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Int,
+                          MjcPhysicsTokens->mjcCompilerInertiaGroupRangeMin,
+                          spec_->compiler.inertiagrouprange[0]);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Int,
+                          MjcPhysicsTokens->mjcCompilerInertiaGroupRangeMax,
+                          spec_->compiler.inertiagrouprange[1]);
+
+    WriteUniformAttribute(physics_scene_path, pxr::SdfValueTypeNames->Bool,
+                          MjcPhysicsTokens->mjcCompilerSaveInertial,
+                          (bool)spec_->compiler.saveinertial);
   }
 
   void WriteMeshes() {
@@ -742,6 +828,46 @@ class ModelWriter {
           data_, texture_shader_path, output_channel, value_type));
     }
     return texture_output_attrs;
+  }
+
+  pxr::SdfPath WritePhysicsMaterial(mjsGeom *geom) {
+    pxr::SdfPath scope_path =
+        body_paths_[kWorldIndex].AppendChild(kTokens->physicsMaterialsScope);
+
+    if (!data_->HasSpec(scope_path)) {
+      CreatePrimSpec(data_, body_paths_[kWorldIndex],
+                     kTokens->physicsMaterialsScope, pxr::UsdGeomTokens->Scope);
+    }
+
+    auto name = GetAvailablePrimName(*mjs_getName(geom->element),
+                                     pxr::UsdShadeTokens->Material, scope_path);
+    pxr::SdfPath material_path =
+        CreatePrimSpec(data_, scope_path, name, pxr::UsdShadeTokens->Material);
+
+    ApplyApiSchema(data_, material_path,
+                   pxr::UsdPhysicsTokens->PhysicsMaterialAPI);
+    ApplyApiSchema(data_, material_path, MjcPhysicsTokens->MjcMaterialAPI);
+
+    mjsGeom *geom_default = mjs_getDefault(geom->element)->geom;
+    if (geom->friction[0] != geom_default->friction[0]) {
+      // Since MuJoCo has no concept of static friction, only write dynamic
+      // friction to remain truthful to how MuJoCo perceives the data.
+      WriteUniformAttribute(material_path, pxr::SdfValueTypeNames->Float,
+                            pxr::UsdPhysicsTokens->physicsDynamicFriction,
+                            (float)geom->friction[0]);
+    }
+    if (geom->friction[1] != geom_default->friction[1]) {
+      WriteUniformAttribute(material_path, pxr::SdfValueTypeNames->Double,
+                            MjcPhysicsTokens->mjcTorsionalfriction,
+                            geom->friction[1]);
+    }
+    if (geom->friction[2] != geom_default->friction[2]) {
+      WriteUniformAttribute(material_path, pxr::SdfValueTypeNames->Double,
+                            MjcPhysicsTokens->mjcRollingfriction,
+                            geom->friction[2]);
+    }
+
+    return material_path;
   }
 
   void WriteMaterial(mjsMaterial *material, const pxr::SdfPath &parent_path) {
@@ -1051,13 +1177,12 @@ class ModelWriter {
     }
   }
 
-  void WriteTransmission(mjsActuator *actuator,
-                         const pxr::SdfPath &parent_path) {
+  void WriteActuator(mjsActuator *actuator, const pxr::SdfPath &parent_path) {
     pxr::TfToken valid_name = GetValidPrimName(*mjs_getName(actuator->element));
-    pxr::SdfPath transmission_path = parent_path.AppendChild(valid_name);
-    if (!data_->HasSpec(transmission_path)) {
+    pxr::SdfPath actuator_path = parent_path.AppendChild(valid_name);
+    if (!data_->HasSpec(actuator_path)) {
       CreatePrimSpec(data_, parent_path, valid_name,
-                     pxr::MjcPhysicsTokens->MjcTransmission);
+                     pxr::MjcPhysicsTokens->MjcActuator);
     }
 
     pxr::SdfPath target_path;
@@ -1078,27 +1203,25 @@ class ModelWriter {
       return;
     }
 
-    CreateRelationshipSpec(data_, transmission_path,
-                           MjcPhysicsTokens->mjcTarget, target_path,
-                           pxr::SdfVariabilityUniform);
+    CreateRelationshipSpec(data_, actuator_path, MjcPhysicsTokens->mjcTarget,
+                           target_path, pxr::SdfVariabilityUniform);
 
-    WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Int,
+    WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Int,
                           MjcPhysicsTokens->mjcGroup, actuator->group);
 
     if (!actuator->refsite->empty()) {
       int refsite_id =
           mj_name2id(model_, mjOBJ_SITE, actuator->refsite->c_str());
       pxr::SdfPath refsite_path = site_paths_[refsite_id];
-      CreateRelationshipSpec(data_, transmission_path,
-                             MjcPhysicsTokens->mjcRefSite, refsite_path,
-                             pxr::SdfVariabilityUniform);
+      CreateRelationshipSpec(data_, actuator_path, MjcPhysicsTokens->mjcRefSite,
+                             refsite_path, pxr::SdfVariabilityUniform);
     }
 
     if (!actuator->slidersite->empty()) {
       int slidersite_id =
           mj_name2id(model_, mjOBJ_SITE, actuator->slidersite->c_str());
       pxr::SdfPath slidersite_path = site_paths_[slidersite_id];
-      CreateRelationshipSpec(data_, transmission_path,
+      CreateRelationshipSpec(data_, actuator_path,
                              MjcPhysicsTokens->mjcSliderSite, slidersite_path,
                              pxr::SdfVariabilityUniform);
     }
@@ -1115,8 +1238,8 @@ class ModelWriter {
       } else if (value == mjLIMITED_FALSE) {
         limited_token = pxr::MjcPhysicsTokens->false_;
       }
-      WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Token,
-                            token, limited_token);
+      WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Token, token,
+                            limited_token);
     }
 
     const std::vector<std::pair<pxr::TfToken, double>>
@@ -1132,18 +1255,21 @@ class ModelWriter {
             {MjcPhysicsTokens->mjcCrankLength, actuator->cranklength},
         };
     for (const auto &[token, value] : actuator_double_attributes) {
-      WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Double,
+      WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Double,
                             token, value);
     }
 
-    WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Int,
+    WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Int,
                           MjcPhysicsTokens->mjcActDim, actuator->actdim);
-    WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Bool,
+    WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Bool,
                           MjcPhysicsTokens->mjcActEarly,
                           (bool)actuator->actearly);
+    WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Double,
+                          MjcPhysicsTokens->mjcInheritRange,
+                          actuator->inheritrange);
 
     WriteUniformAttribute(
-        transmission_path, pxr::SdfValueTypeNames->DoubleArray,
+        actuator_path, pxr::SdfValueTypeNames->DoubleArray,
         MjcPhysicsTokens->mjcGear,
         pxr::VtDoubleArray(actuator->gear, actuator->gear + 6));
 
@@ -1161,10 +1287,10 @@ class ModelWriter {
     } else if (actuator->dyntype == mjtDyn::mjDYN_USER) {
       dyn_type = MjcPhysicsTokens->user;
     }
-    WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Token,
+    WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Token,
                           MjcPhysicsTokens->mjcDynType, dyn_type);
     WriteUniformAttribute(
-        transmission_path, pxr::SdfValueTypeNames->DoubleArray,
+        actuator_path, pxr::SdfValueTypeNames->DoubleArray,
         MjcPhysicsTokens->mjcDynPrm,
         pxr::VtDoubleArray(actuator->dynprm, actuator->dynprm + 10));
 
@@ -1178,10 +1304,10 @@ class ModelWriter {
     } else if (actuator->gaintype == mjtGain::mjGAIN_USER) {
       gain_type = MjcPhysicsTokens->user;
     }
-    WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Token,
+    WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Token,
                           MjcPhysicsTokens->mjcGainType, gain_type);
     WriteUniformAttribute(
-        transmission_path, pxr::SdfValueTypeNames->DoubleArray,
+        actuator_path, pxr::SdfValueTypeNames->DoubleArray,
         MjcPhysicsTokens->mjcGainPrm,
         pxr::VtDoubleArray(actuator->gainprm, actuator->gainprm + 10));
 
@@ -1195,22 +1321,22 @@ class ModelWriter {
     } else if (actuator->biastype == mjtBias::mjBIAS_USER) {
       bias_type = MjcPhysicsTokens->user;
     }
-    WriteUniformAttribute(transmission_path, pxr::SdfValueTypeNames->Token,
+    WriteUniformAttribute(actuator_path, pxr::SdfValueTypeNames->Token,
                           MjcPhysicsTokens->mjcBiasType, bias_type);
     WriteUniformAttribute(
-        transmission_path, pxr::SdfValueTypeNames->DoubleArray,
+        actuator_path, pxr::SdfValueTypeNames->DoubleArray,
         MjcPhysicsTokens->mjcBiasPrm,
         pxr::VtDoubleArray(actuator->biasprm, actuator->biasprm + 10));
   }
 
-  void WriteTransmissions() {
+  void WriteActuators() {
     pxr::SdfPath scope_path =
-        CreatePrimSpec(data_, body_paths_[kWorldIndex],
-                       kTokens->transmissionsScope, pxr::UsdGeomTokens->Scope);
+        CreatePrimSpec(data_, body_paths_[kWorldIndex], kTokens->actuatorsScope,
+                       pxr::UsdGeomTokens->Scope);
     mjsActuator *actuator =
         mjs_asActuator(mjs_firstElement(spec_, mjOBJ_ACTUATOR));
     while (actuator) {
-      WriteTransmission(actuator, scope_path);
+      WriteActuator(actuator, scope_path);
       actuator = mjs_asActuator(mjs_nextElement(spec_, actuator->element));
     }
   }
@@ -1463,6 +1589,11 @@ class ModelWriter {
 
     ApplyApiSchema(data_, site_path, MjcPhysicsTokens->MjcSiteAPI);
 
+    WriteUniformAttribute(site_path, pxr::SdfValueTypeNames->Int,
+                          MjcPhysicsTokens->mjcGroup, site->group);
+
+    WriteColorAndOpacityAttributes(site_path, site);
+
     int site_id = mjs_getId(site->element);
     auto transform = MujocoPosQuatToTransform(&model_->site_pos[3 * site_id],
                                               &model_->site_quat[4 * site_id]);
@@ -1508,10 +1639,19 @@ class ModelWriter {
         return;
     }
 
+    WriteUniformAttribute(geom_path, pxr::SdfValueTypeNames->Int,
+                          MjcPhysicsTokens->mjcGroup, geom->group);
+
+    if (model_->geom_contype[geom_id] == 0 &&
+        model_->geom_conaffinity[geom_id] == 0) {
+      // If the geom is purely visual, apply the imageable API.
+      ApplyApiSchema(data_, geom_path, MjcPhysicsTokens->MjcImageableAPI);
+    }
+
     // Apply the physics schemas if we are writing physics and the
     // geom participates in collisions.
-    if (write_physics_ && (model_->geom_contype[geom_id] != 0 ||
-                           model_->geom_conaffinity[geom_id] != 0)) {
+    if (model_->geom_contype[geom_id] != 0 ||
+        model_->geom_conaffinity[geom_id] != 0) {
       ApplyApiSchema(data_, geom_path,
                      pxr::UsdPhysicsTokens->PhysicsCollisionAPI);
       ApplyApiSchema(data_, geom_path, MjcPhysicsTokens->MjcCollisionAPI);
@@ -1520,6 +1660,34 @@ class ModelWriter {
           geom_path, pxr::SdfValueTypeNames->Bool,
           MjcPhysicsTokens->mjcShellinertia,
           geom->typeinertia == mjtGeomInertia::mjINERTIA_SHELL);
+
+      WriteUniformAttribute(geom_path, pxr::SdfValueTypeNames->Int,
+                            MjcPhysicsTokens->mjcPriority, geom->priority);
+
+      WriteUniformAttribute(geom_path, pxr::SdfValueTypeNames->Int,
+                            MjcPhysicsTokens->mjcCondim, geom->condim);
+
+      WriteUniformAttribute(geom_path, pxr::SdfValueTypeNames->Double,
+                            MjcPhysicsTokens->mjcSolmix, geom->solmix);
+
+      WriteUniformAttribute(geom_path, pxr::SdfValueTypeNames->Double,
+                            MjcPhysicsTokens->mjcSolmix, geom->solmix);
+
+      WriteUniformAttribute(
+          geom_path, pxr::SdfValueTypeNames->DoubleArray,
+          MjcPhysicsTokens->mjcSolref,
+          pxr::VtArray<double>(geom->solref, geom->solref + mjNREF));
+
+      WriteUniformAttribute(
+          geom_path, pxr::SdfValueTypeNames->DoubleArray,
+          MjcPhysicsTokens->mjcSolimp,
+          pxr::VtArray<double>(geom->solimp, geom->solimp + mjNIMP));
+
+      WriteUniformAttribute(geom_path, pxr::SdfValueTypeNames->Double,
+                            MjcPhysicsTokens->mjcMargin, geom->margin);
+
+      WriteUniformAttribute(geom_path, pxr::SdfValueTypeNames->Double,
+                            MjcPhysicsTokens->mjcGap, geom->gap);
 
       if (geom->mass >= mjMINVAL || geom->density >= mjMINVAL) {
         ApplyApiSchema(data_, geom_path, pxr::UsdPhysicsTokens->PhysicsMassAPI);
@@ -1545,6 +1713,20 @@ class ModelWriter {
         SetAttributeDefault(data_, density_attr, (float)geom->density);
       }
 
+      mjsDefault *geom_default = mjs_getDefault(geom->element);
+
+      if (geom->friction[0] != geom_default->geom->friction[0] ||
+          geom->friction[1] != geom_default->geom->friction[1] ||
+          geom->friction[2] != geom_default->geom->friction[2]) {
+        pxr::SdfPath physics_material_path = WritePhysicsMaterial(geom);
+        ApplyApiSchema(data_, geom_path,
+                       pxr::UsdShadeTokens->MaterialBindingAPI);
+        // Bind the material to this geom.
+        CreateRelationshipSpec(
+            data_, geom_path, pxr::UsdShadeTokens->materialBinding,
+            physics_material_path, pxr::SdfVariabilityUniform);
+      }
+
       // For meshes, also apply PhysicsMeshCollisionAPI and set the
       // approximation attribute.
       if (geom->type == mjGEOM_MESH) {
@@ -1560,6 +1742,11 @@ class ModelWriter {
         SetAttributeDefault(data_, approximation_attr,
                             pxr::UsdPhysicsTokens->convexHull);
       }
+    } else {
+      // Currently imageable only has a group API. But since it's the same
+      // naming in MjcCollisionsAPI we've already set it earlier in this
+      // function.
+      ApplyApiSchema(data_, geom_path, MjcPhysicsTokens->MjcImageableAPI);
     }
 
     mjsDefault *spec_default = mjs_getDefault(geom->element);
@@ -1592,28 +1779,7 @@ class ModelWriter {
       }
     }
 
-    // If geom rgba is not the default (0.5, 0.5, 0.5, 1), then set the
-    // displayColor attribute.
-    // No effort is made to properly handle the interaction between geom rgba
-    // and the material if both are specified.
-    if (geom->rgba[0] != 0.5f || geom->rgba[1] != 0.5f ||
-        geom->rgba[2] != 0.5f || geom->rgba[3] != 1.0f) {
-      // Set the displayColor attribute.
-      pxr::SdfPath display_color_attr = CreateAttributeSpec(
-          data_, geom_path, pxr::UsdGeomTokens->primvarsDisplayColor,
-          pxr::SdfValueTypeNames->Color3fArray);
-      SetAttributeDefault(data_, display_color_attr,
-                          pxr::VtArray<pxr::GfVec3f>{
-                              {geom->rgba[0], geom->rgba[1], geom->rgba[2]}});
-      // Set the displayOpacity attribute, only if the opacity is not 1.
-      if (geom->rgba[3] != 1.0f) {
-        pxr::SdfPath display_opacity_attr = CreateAttributeSpec(
-            data_, geom_path, pxr::UsdGeomTokens->primvarsDisplayOpacity,
-            pxr::SdfValueTypeNames->FloatArray);
-        SetAttributeDefault(data_, display_opacity_attr,
-                            pxr::VtArray<float>{geom->rgba[3]});
-      }
-    }
+    WriteColorAndOpacityAttributes(geom_path, geom);
 
     if (body_id == kWorldIndex) {
       SetPrimKind(data_, geom_path, pxr::KindTokens->component);
@@ -1646,8 +1812,6 @@ class ModelWriter {
   }
 
   void WriteJoints(mjsBody *body) {
-    if (!write_physics_) return;
-
     int body_id = mjs_getId(body->element);
     if (body_id == kWorldIndex) return;
 
@@ -1733,11 +1897,8 @@ class ModelWriter {
 
     // Local joint frame for body1
     pxr::GfVec3f local_pos1(mj_jnt_pos);
-    pxr::GfRotation().SetRotateInto(pxr::GfVec3f::ZAxis(), mj_jnt_axis);
     pxr::GfQuatf local_rot1(
-        pxr::GfRotation()
-            .SetRotateInto(pxr::GfVec3f::ZAxis(), mj_jnt_axis)
-            .GetQuat());
+        pxr::GfRotation(pxr::GfVec3f::ZAxis(), mj_jnt_axis).GetQuat());
 
     SetAttributeDefault(
         data_,
@@ -1783,8 +1944,7 @@ class ModelWriter {
     if (joint_prim_type == pxr::UsdPhysicsTokens->PhysicsRevoluteJoint ||
         joint_prim_type == pxr::UsdPhysicsTokens->PhysicsPrismaticJoint) {
       pxr::GfQuatf other_rot0(
-          pxr::GfRotation()
-              .SetRotateInto(pxr::GfVec3f::ZAxis(), jnt_axis_parent_local)
+          pxr::GfRotation(pxr::GfVec3f::ZAxis(), jnt_axis_parent_local)
               .GetQuat());
 
       SetAttributeDefault(
@@ -1858,6 +2018,9 @@ class ModelWriter {
 
       // Finally write the mjcPhysicsJointAPI attributes.
       ApplyApiSchema(data_, joint_path, MjcPhysicsTokens->MjcJointAPI);
+
+      WriteUniformAttribute(joint_path, pxr::SdfValueTypeNames->Int,
+                            MjcPhysicsTokens->mjcGroup, joint->group);
 
       WriteUniformAttribute(
           joint_path, pxr::SdfValueTypeNames->DoubleArray,
@@ -2049,49 +2212,46 @@ class ModelWriter {
       }
     }
 
-    // Apply the PhysicsRigidBodyAPI schema if we are writing physics.
-    if (write_physics_) {
-      // If the body had a mass specified then it must have either inertia or
-      // fullinertia specified per inertia element XML documentation.
-      // Therefore it is sufficient to check if the mass is non-zero to see if
-      // we should set inertial attributes on the body.
-      //
-      // Note that if the user has NOT specified any inertial properties then
-      // we don't want to pull values from the compiled model since coming back
-      // into Mujoco would take those values instead of computing them
-      // automatically from the subtree.
-      if (body->mass > 0) {
-        // User might have specified the inertia via fullinertia and the
-        // compiler has extracted all values properly. So leverage those
-        // instead of doing the computation ourselves here.
-        ApplyApiSchema(data_, body_path, pxr::UsdPhysicsTokens->PhysicsMassAPI);
-        WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Float,
-                              pxr::UsdPhysicsTokens->physicsMass,
-                              (float)model_->body_mass[body_id]);
+    // If the body had a mass specified then it must have either inertia or
+    // fullinertia specified per inertia element XML documentation.
+    // Therefore it is sufficient to check if the mass is non-zero to see if
+    // we should set inertial attributes on the body.
+    //
+    // Note that if the user has NOT specified any inertial properties then
+    // we don't want to pull values from the compiled model since coming back
+    // into Mujoco would take those values instead of computing them
+    // automatically from the subtree.
+    if (body->mass > 0) {
+      // User might have specified the inertia via fullinertia and the
+      // compiler has extracted all values properly. So leverage those
+      // instead of doing the computation ourselves here.
+      ApplyApiSchema(data_, body_path, pxr::UsdPhysicsTokens->PhysicsMassAPI);
+      WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Float,
+                            pxr::UsdPhysicsTokens->physicsMass,
+                            (float)model_->body_mass[body_id]);
 
-        mjtNum *body_ipos = &model_->body_ipos[body_id * 3];
-        pxr::GfVec3f inertial_pos(body_ipos[0], body_ipos[1], body_ipos[2]);
-        WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Point3f,
-                              pxr::UsdPhysicsTokens->physicsCenterOfMass,
-                              inertial_pos);
+      mjtNum *body_ipos = &model_->body_ipos[body_id * 3];
+      pxr::GfVec3f inertial_pos(body_ipos[0], body_ipos[1], body_ipos[2]);
+      WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Point3f,
+                            pxr::UsdPhysicsTokens->physicsCenterOfMass,
+                            inertial_pos);
 
-        mjtNum *body_iquat = &model_->body_iquat[body_id * 4];
-        pxr::GfQuatf inertial_frame(body_iquat[0], body_iquat[1], body_iquat[2],
-                                    body_iquat[3]);
-        WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Quatf,
-                              pxr::UsdPhysicsTokens->physicsPrincipalAxes,
-                              inertial_frame);
+      mjtNum *body_iquat = &model_->body_iquat[body_id * 4];
+      pxr::GfQuatf inertial_frame(body_iquat[0], body_iquat[1], body_iquat[2],
+                                  body_iquat[3]);
+      WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Quatf,
+                            pxr::UsdPhysicsTokens->physicsPrincipalAxes,
+                            inertial_frame);
 
-        mjtNum *inertia = &model_->body_inertia[body_id * 3];
-        pxr::GfVec3f diag_inertia(inertia[0], inertia[1], inertia[2]);
-        WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Float3,
-                              pxr::UsdPhysicsTokens->physicsDiagonalInertia,
-                              diag_inertia);
-      }
-
-      ApplyApiSchema(data_, body_path,
-                     pxr::UsdPhysicsTokens->PhysicsRigidBodyAPI);
+      mjtNum *inertia = &model_->body_inertia[body_id * 3];
+      pxr::GfVec3f diag_inertia(inertia[0], inertia[1], inertia[2]);
+      WriteUniformAttribute(body_path, pxr::SdfValueTypeNames->Float3,
+                            pxr::UsdPhysicsTokens->physicsDiagonalInertia,
+                            diag_inertia);
     }
+
+    ApplyApiSchema(data_, body_path,
+                   pxr::UsdPhysicsTokens->PhysicsRigidBodyAPI);
 
     // Create classes if necessary
     mjsDefault *spec_default = mjs_getDefault(body->element);
@@ -2162,8 +2322,7 @@ class ModelWriter {
 namespace mujoco {
 namespace usd {
 
-bool WriteSpecToData(mjSpec *spec, pxr::SdfAbstractDataRefPtr &data,
-                     bool write_physics) {
+bool WriteSpecToData(mjSpec *spec, pxr::SdfAbstractDataRefPtr &data) {
   // Create pseudo root first.
   data->CreateSpec(pxr::SdfPath::AbsoluteRootPath(),
                    pxr::SdfSpecTypePseudoRoot);
@@ -2174,7 +2333,7 @@ bool WriteSpecToData(mjSpec *spec, pxr::SdfAbstractDataRefPtr &data,
     return false;
   }
 
-  ModelWriter(spec, model, data).Write(write_physics);
+  ModelWriter(spec, model, data).Write();
 
   return true;
 }

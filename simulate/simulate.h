@@ -47,7 +47,7 @@ class Simulate {
   using Clock = std::chrono::steady_clock;
   static_assert(std::ratio_less_equal_v<Clock::period, std::milli>);
 
-  static constexpr int kMaxGeom = 20000;
+  static constexpr int kMaxGeom = 100000;
 
   // create object and initialize the simulate ui
   Simulate(
@@ -193,7 +193,7 @@ class Simulate {
   int info = 0;
   int profiler = 0;
   int sensor = 0;
-  int pause_update = 1;
+  int pause_update = 0;
   int fullscreen = 0;
   int vsync = 1;
   int busywait = 0;

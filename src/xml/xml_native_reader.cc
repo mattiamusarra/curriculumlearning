@@ -34,6 +34,7 @@
 #include <mujoco/mjtnum.h>
 #include <mujoco/mjvisualize.h>
 #include "engine/engine_plugin.h"
+#include "engine/engine_support.h"
 #include "engine/engine_util_errmem.h"
 #include "engine/engine_util_misc.h"
 #include <mujoco/mjspec.h>
@@ -44,6 +45,9 @@
 #include "xml/xml_base.h"
 #include "xml/xml_util.h"
 #include "tinyxml2.h"
+#ifdef mjUSEUSD
+#include <mujoco/experimental/usd/usd.h>
+#endif  // mjUSEUSD
 
 namespace {
 using std::string;
@@ -114,10 +118,10 @@ const char* MJCF[nMJCF][mjXATTRNUM] = {
         "solver", "iterations", "ls_iterations", "noslip_iterations", "ccd_iterations",
         "sdf_iterations", "sdf_initpoints", "actuatorgroupdisable"},
     {"<"},
-        {"flag", "?", "23", "constraint", "equality", "frictionloss", "limit", "contact",
-            "passive", "gravity", "clampctrl", "warmstart",
+        {"flag", "?", "24", "constraint", "equality", "frictionloss", "limit", "contact",
+            "spring", "damper", "gravity", "clampctrl", "warmstart",
             "filterparent", "actuation", "refsafe", "sensor", "midphase", "eulerdamp", "autoreset",
-            "override", "energy", "fwdinv", "invdiscrete", "multiccd", "island", "nativeccd"},
+            "nativeccd", "island", "override", "energy", "fwdinv", "invdiscrete", "multiccd"},
     {">"},
 
     {"size", "*", "14", "memory", "njmax", "nconmax", "nstack", "nuserdata", "nkey",
@@ -226,9 +230,9 @@ const char* MJCF[nMJCF][mjXATTRNUM] = {
 
     {"asset", "*", "0"},
     {"<"},
-        {"mesh", "*", "14", "name", "class", "content_type", "file", "vertex", "normal",
+        {"mesh", "*", "17", "name", "class", "content_type", "file", "vertex", "normal",
             "texcoord", "face", "refpos", "refquat", "scale", "smoothnormal",
-            "maxhullvert", "inertia"},
+            "maxhullvert", "inertia", "builtin", "params", "material"},
         {"<"},
           {"plugin", "*", "2", "plugin", "instance"},
           {"<"},
@@ -312,9 +316,9 @@ const char* MJCF[nMJCF][mjXATTRNUM] = {
         {"<"},
             {"edge", "?", "5", "equality", "solref", "solimp", "stiffness", "damping"},
             {"elasticity", "?", "5", "young", "poisson", "damping", "thickness", "elastic2d"},
-            {"contact", "?", "14", "contype", "conaffinity", "condim", "priority",
+            {"contact", "?", "15", "contype", "conaffinity", "condim", "priority",
                 "friction", "solmix", "solref", "solimp", "margin", "gap",
-                "internal", "selfcollide", "activelayers", "vertcollide"},
+                "internal", "selfcollide", "activelayers", "vertcollide", "passive"},
             {"pin", "*", "4", "id", "range", "grid", "gridrange"},
             {"plugin", "*", "2", "plugin", "instance"},
             {"<"},
@@ -328,9 +332,9 @@ const char* MJCF[nMJCF][mjXATTRNUM] = {
         {"flex", "*", "13", "name", "group", "dim", "radius", "material",
             "rgba", "flatskin", "body", "vertex", "element", "texcoord", "elemtexcoord", "node"},
         {"<"},
-            {"contact", "?", "14", "contype", "conaffinity", "condim", "priority",
+            {"contact", "?", "15", "contype", "conaffinity", "condim", "priority",
                 "friction", "solmix", "solref", "solimp", "margin", "gap",
-                "internal", "selfcollide", "activelayers", "vertcollide"},
+                "internal", "selfcollide", "activelayers", "vertcollide", "passive"},
             {"edge", "?", "2", "stiffness", "damping"},
             {"elasticity", "?", "5", "young", "poisson", "damping", "thickness", "elastic2d"},
         {">"},
@@ -481,11 +485,14 @@ const char* MJCF[nMJCF][mjXATTRNUM] = {
         {"distance", "*", "8", "name", "geom1", "geom2", "body1", "body2", "cutoff", "noise", "user"},
         {"normal", "*", "8", "name", "geom1", "geom2", "body1", "body2", "cutoff", "noise", "user"},
         {"fromto", "*", "8", "name", "geom1", "geom2", "body1", "body2", "cutoff", "noise", "user"},
+        {"contact", "*", "12", "name", "geom1", "geom2", "body1", "body2", "subtree1", "subtree2", "site",
+            "num", "data", "reduce", "cutoff", "noise", "user"},
         {"e_potential", "*", "4", "name", "cutoff", "noise", "user"},
         {"e_kinetic", "*", "4", "name", "cutoff", "noise", "user"},
         {"clock", "*", "4", "name", "cutoff", "noise", "user"},
         {"user", "*", "9", "name", "objtype", "objname", "datatype", "needstage",
             "dim", "cutoff", "noise", "user"},
+    {"tactile", "*", "4", "name", "geom", "mesh", "user"},
         {"plugin", "*", "9", "name", "plugin", "instance", "cutoff", "objtype", "objname", "reftype", "refname",
             "user"},
         {"<"},
@@ -550,24 +557,24 @@ const mjMap TFAuto_map[3] = {
 // joint type
 const int joint_sz = 4;
 const mjMap joint_map[joint_sz] = {
-  {"free",        mjJNT_FREE},
-  {"ball",        mjJNT_BALL},
-  {"slide",       mjJNT_SLIDE},
-  {"hinge",       mjJNT_HINGE}
+  {"free",          mjJNT_FREE},
+  {"ball",          mjJNT_BALL},
+  {"slide",         mjJNT_SLIDE},
+  {"hinge",         mjJNT_HINGE}
 };
 
 
 // geom type
 const mjMap geom_map[mjNGEOMTYPES] = {
-  {"plane",       mjGEOM_PLANE},
-  {"hfield",      mjGEOM_HFIELD},
-  {"sphere",      mjGEOM_SPHERE},
-  {"capsule",     mjGEOM_CAPSULE},
-  {"ellipsoid",   mjGEOM_ELLIPSOID},
-  {"cylinder",    mjGEOM_CYLINDER},
-  {"box",         mjGEOM_BOX},
-  {"mesh",        mjGEOM_MESH},
-  {"sdf",         mjGEOM_SDF}
+  {"plane",         mjGEOM_PLANE},
+  {"hfield",        mjGEOM_HFIELD},
+  {"sphere",        mjGEOM_SPHERE},
+  {"capsule",       mjGEOM_CAPSULE},
+  {"ellipsoid",     mjGEOM_ELLIPSOID},
+  {"cylinder",      mjGEOM_CYLINDER},
+  {"box",           mjGEOM_BOX},
+  {"mesh",          mjGEOM_MESH},
+  {"sdf",           mjGEOM_SDF}
 };
 
 
@@ -606,234 +613,272 @@ const mjMap texrole_map[texrole_sz] = {
   {"orm",           mjTEXROLE_ORM},
 };
 
+
 // integrator type
 const int integrator_sz = 4;
 const mjMap integrator_map[integrator_sz] = {
-  {"Euler",        mjINT_EULER},
-  {"RK4",          mjINT_RK4},
-  {"implicit",     mjINT_IMPLICIT},
-  {"implicitfast", mjINT_IMPLICITFAST}
+  {"Euler",         mjINT_EULER},
+  {"RK4",           mjINT_RK4},
+  {"implicit",      mjINT_IMPLICIT},
+  {"implicitfast",  mjINT_IMPLICITFAST}
 };
+
 
 // cone type
 const int cone_sz = 2;
 const mjMap cone_map[cone_sz] = {
-  {"pyramidal",   mjCONE_PYRAMIDAL},
-  {"elliptic",    mjCONE_ELLIPTIC}
+  {"pyramidal",     mjCONE_PYRAMIDAL},
+  {"elliptic",      mjCONE_ELLIPTIC}
 };
 
 
 // Jacobian type
 const int jac_sz = 3;
 const mjMap jac_map[jac_sz] = {
-  {"dense",       mjJAC_DENSE},
-  {"sparse",      mjJAC_SPARSE},
-  {"auto",        mjJAC_AUTO}
+  {"dense",         mjJAC_DENSE},
+  {"sparse",        mjJAC_SPARSE},
+  {"auto",          mjJAC_AUTO}
 };
 
 
 // solver type
 const int solver_sz = 3;
 const mjMap solver_map[solver_sz] = {
-  {"PGS",         mjSOL_PGS},
-  {"CG",          mjSOL_CG},
-  {"Newton",      mjSOL_NEWTON}
+  {"PGS",           mjSOL_PGS},
+  {"CG",            mjSOL_CG},
+  {"Newton",        mjSOL_NEWTON}
 };
 
 
 // constraint type
 const int equality_sz = 6;
 const mjMap equality_map[equality_sz] = {
-  {"connect",     mjEQ_CONNECT},
-  {"weld",        mjEQ_WELD},
-  {"joint",       mjEQ_JOINT},
-  {"tendon",      mjEQ_TENDON},
-  {"flex",        mjEQ_FLEX},
-  {"distance",    mjEQ_DISTANCE}
+  {"connect",       mjEQ_CONNECT},
+  {"weld",          mjEQ_WELD},
+  {"joint",         mjEQ_JOINT},
+  {"tendon",        mjEQ_TENDON},
+  {"flex",          mjEQ_FLEX},
+  {"distance",      mjEQ_DISTANCE}
 };
 
 
 // type for texture
 const int texture_sz = 3;
 const mjMap texture_map[texture_sz] = {
-  {"2d",          mjTEXTURE_2D},
-  {"cube",        mjTEXTURE_CUBE},
-  {"skybox",      mjTEXTURE_SKYBOX}
+  {"2d",            mjTEXTURE_2D},
+  {"cube",          mjTEXTURE_CUBE},
+  {"skybox",        mjTEXTURE_SKYBOX}
 };
 
 
 // colorspace for texture
 const int colorspace_sz = 3;
 const mjMap colorspace_map[colorspace_sz] = {
-  {"auto",        mjCOLORSPACE_AUTO},
-  {"linear",      mjCOLORSPACE_LINEAR},
-  {"sRGB",        mjCOLORSPACE_SRGB}
+  {"auto",          mjCOLORSPACE_AUTO},
+  {"linear",        mjCOLORSPACE_LINEAR},
+  {"sRGB",          mjCOLORSPACE_SRGB}
 };
 
 
 // builtin type for texture
 const int builtin_sz = 4;
 const mjMap builtin_map[builtin_sz] = {
-  {"none",        mjBUILTIN_NONE},
-  {"gradient",    mjBUILTIN_GRADIENT},
-  {"checker",     mjBUILTIN_CHECKER},
-  {"flat",        mjBUILTIN_FLAT}
+  {"none",          mjBUILTIN_NONE},
+  {"gradient",      mjBUILTIN_GRADIENT},
+  {"checker",       mjBUILTIN_CHECKER},
+  {"flat",          mjBUILTIN_FLAT}
 };
 
 
 // mark type for texture
 const int mark_sz = 4;
 const mjMap mark_map[mark_sz] = {
-  {"none",        mjMARK_NONE},
-  {"edge",        mjMARK_EDGE},
-  {"cross",       mjMARK_CROSS},
-  {"random",      mjMARK_RANDOM}
+  {"none",          mjMARK_NONE},
+  {"edge",          mjMARK_EDGE},
+  {"cross",         mjMARK_CROSS},
+  {"random",        mjMARK_RANDOM}
 };
 
 
 // dyn type
 const int dyn_sz = 6;
 const mjMap dyn_map[dyn_sz] = {
-  {"none",        mjDYN_NONE},
-  {"integrator",  mjDYN_INTEGRATOR},
-  {"filter",      mjDYN_FILTER},
-  {"filterexact", mjDYN_FILTEREXACT},
-  {"muscle",      mjDYN_MUSCLE},
-  {"user",        mjDYN_USER}
+  {"none",          mjDYN_NONE},
+  {"integrator",    mjDYN_INTEGRATOR},
+  {"filter",        mjDYN_FILTER},
+  {"filterexact",   mjDYN_FILTEREXACT},
+  {"muscle",        mjDYN_MUSCLE},
+  {"user",          mjDYN_USER}
 };
 
 
 // gain type
 const int gain_sz = 4;
 const mjMap gain_map[gain_sz] = {
-  {"fixed",       mjGAIN_FIXED},
-  {"affine",      mjGAIN_AFFINE},
-  {"muscle",      mjGAIN_MUSCLE},
-  {"user",        mjGAIN_USER}
+  {"fixed",         mjGAIN_FIXED},
+  {"affine",        mjGAIN_AFFINE},
+  {"muscle",        mjGAIN_MUSCLE},
+  {"user",          mjGAIN_USER}
 };
 
 
 // bias type
 const int bias_sz = 4;
 const mjMap bias_map[bias_sz] = {
-  {"none",        mjBIAS_NONE},
-  {"affine",      mjBIAS_AFFINE},
-  {"muscle",      mjBIAS_MUSCLE},
-  {"user",        mjBIAS_USER}
+  {"none",          mjBIAS_NONE},
+  {"affine",        mjBIAS_AFFINE},
+  {"muscle",        mjBIAS_MUSCLE},
+  {"user",          mjBIAS_USER}
 };
 
 
 // stage type
 const int stage_sz = 4;
 const mjMap stage_map[stage_sz] = {
-  {"none",        mjSTAGE_NONE},
-  {"pos",         mjSTAGE_POS},
-  {"vel",         mjSTAGE_VEL},
-  {"acc",         mjSTAGE_ACC}
+  {"none",          mjSTAGE_NONE},
+  {"pos",           mjSTAGE_POS},
+  {"vel",           mjSTAGE_VEL},
+  {"acc",           mjSTAGE_ACC}
 };
 
 
 // data type
 const int datatype_sz = 4;
 const mjMap datatype_map[datatype_sz] = {
-  {"real",        mjDATATYPE_REAL},
-  {"positive",    mjDATATYPE_POSITIVE},
-  {"axis",        mjDATATYPE_AXIS},
-  {"quaternion",  mjDATATYPE_QUATERNION}
+  {"real",          mjDATATYPE_REAL},
+  {"positive",      mjDATATYPE_POSITIVE},
+  {"axis",          mjDATATYPE_AXIS},
+  {"quaternion",    mjDATATYPE_QUATERNION}
+};
+
+
+// contact data type
+const mjMap condata_map[mjNCONDATA] = {
+  {"found",         mjCONDATA_FOUND},
+  {"force",         mjCONDATA_FORCE},
+  {"torque",        mjCONDATA_TORQUE},
+  {"dist",          mjCONDATA_DIST},
+  {"pos",           mjCONDATA_POS},
+  {"normal",        mjCONDATA_NORMAL},
+  {"tangent",       mjCONDATA_TANGENT}
+};
+
+
+// contact reduction type
+const int reduce_sz = 4;
+const mjMap reduce_map[reduce_sz] = {
+  {"none",          0},
+  {"mindist",       1},
+  {"maxforce",      2},
+  {"netforce",      3}
 };
 
 
 // LR mode
 const int lrmode_sz = 4;
 const mjMap lrmode_map[lrmode_sz] = {
-  {"none",        mjLRMODE_NONE},
-  {"muscle",      mjLRMODE_MUSCLE},
-  {"muscleuser",  mjLRMODE_MUSCLEUSER},
-  {"all",         mjLRMODE_ALL}
+  {"none",          mjLRMODE_NONE},
+  {"muscle",        mjLRMODE_MUSCLE},
+  {"muscleuser",    mjLRMODE_MUSCLEUSER},
+  {"all",           mjLRMODE_ALL}
 };
 
 
 // composite type
 const mjMap comp_map[mjNCOMPTYPES] = {
-  {"particle",    mjCOMPTYPE_PARTICLE},
-  {"grid",        mjCOMPTYPE_GRID},
-  {"rope",        mjCOMPTYPE_ROPE},
-  {"loop",        mjCOMPTYPE_LOOP},
-  {"cable",       mjCOMPTYPE_CABLE},
-  {"cloth",       mjCOMPTYPE_CLOTH}
+  {"particle",      mjCOMPTYPE_PARTICLE},
+  {"grid",          mjCOMPTYPE_GRID},
+  {"rope",          mjCOMPTYPE_ROPE},
+  {"loop",          mjCOMPTYPE_LOOP},
+  {"cable",         mjCOMPTYPE_CABLE},
+  {"cloth",         mjCOMPTYPE_CLOTH}
 };
 
 
 // composite joint kind
 const mjMap jkind_map[1] = {
-  {"main",        mjCOMPKIND_JOINT}
+  {"main",          mjCOMPKIND_JOINT}
 };
 
 
 // composite rope shape
 const mjMap shape_map[mjNCOMPSHAPES] = {
-  {"s",           mjCOMPSHAPE_LINE},
-  {"cos(s)",      mjCOMPSHAPE_COS},
-  {"sin(s)",      mjCOMPSHAPE_SIN},
-  {"0",           mjCOMPSHAPE_ZERO}
+  {"s",             mjCOMPSHAPE_LINE},
+  {"cos(s)",        mjCOMPSHAPE_COS},
+  {"sin(s)",        mjCOMPSHAPE_SIN},
+  {"0",             mjCOMPSHAPE_ZERO}
 };
 
 
 // mesh type
 const mjMap meshtype_map[2] = {
-  {"false", mjINERTIA_VOLUME},
-  {"true",  mjINERTIA_SHELL},
+  {"false",         mjINERTIA_VOLUME},
+  {"true",          mjINERTIA_SHELL},
 };
 
 
 // mesh inertia type
 const mjMap meshinertia_map[4] = {
-  {"convex", mjMESH_INERTIA_CONVEX},
-  {"legacy", mjMESH_INERTIA_LEGACY},
-  {"exact", mjMESH_INERTIA_EXACT},
-  {"shell", mjMESH_INERTIA_SHELL}
+  {"convex",        mjMESH_INERTIA_CONVEX},
+  {"legacy",        mjMESH_INERTIA_LEGACY},
+  {"exact",         mjMESH_INERTIA_EXACT},
+  {"shell",         mjMESH_INERTIA_SHELL}
+};
+
+
+// mesh builtin type
+const int meshbuiltin_sz = 8;
+const mjMap meshbuiltin_map[meshbuiltin_sz] = {
+  {"none",          mjMESH_BUILTIN_NONE},
+  {"sphere",        mjMESH_BUILTIN_SPHERE},
+  {"hemisphere",    mjMESH_BUILTIN_HEMISPHERE},
+  {"cone",          mjMESH_BUILTIN_CONE},
+  {"supertorus",    mjMESH_BUILTIN_SUPERTORUS},
+  {"supersphere",   mjMESH_BUILTIN_SUPERSPHERE},
+  {"wedge",         mjMESH_BUILTIN_WEDGE},
+  {"plate",         mjMESH_BUILTIN_PLATE}
 };
 
 
 // flexcomp type
 const mjMap fcomp_map[mjNFCOMPTYPES] = {
-  {"grid",        mjFCOMPTYPE_GRID},
-  {"box",         mjFCOMPTYPE_BOX},
-  {"cylinder",    mjFCOMPTYPE_CYLINDER},
-  {"ellipsoid",   mjFCOMPTYPE_ELLIPSOID},
-  {"square",      mjFCOMPTYPE_SQUARE},
-  {"disc",        mjFCOMPTYPE_DISC},
-  {"circle",      mjFCOMPTYPE_CIRCLE},
-  {"mesh",        mjFCOMPTYPE_MESH},
-  {"gmsh",        mjFCOMPTYPE_GMSH},
-  {"direct",      mjFCOMPTYPE_DIRECT}
+  {"grid",          mjFCOMPTYPE_GRID},
+  {"box",           mjFCOMPTYPE_BOX},
+  {"cylinder",      mjFCOMPTYPE_CYLINDER},
+  {"ellipsoid",     mjFCOMPTYPE_ELLIPSOID},
+  {"square",        mjFCOMPTYPE_SQUARE},
+  {"disc",          mjFCOMPTYPE_DISC},
+  {"circle",        mjFCOMPTYPE_CIRCLE},
+  {"mesh",          mjFCOMPTYPE_MESH},
+  {"gmsh",          mjFCOMPTYPE_GMSH},
+  {"direct",        mjFCOMPTYPE_DIRECT}
 };
 
 
 // flexcomp dof type
 const mjMap fdof_map[mjNFCOMPDOFS] = {
-  {"full",        mjFCOMPDOF_FULL},
-  {"radial",      mjFCOMPDOF_RADIAL},
-  {"trilinear",   mjFCOMPDOF_TRILINEAR}
+  {"full",          mjFCOMPDOF_FULL},
+  {"radial",        mjFCOMPDOF_RADIAL},
+  {"trilinear",     mjFCOMPDOF_TRILINEAR}
 };
 
 
 // flex selfcollide type
 const mjMap flexself_map[5] = {
-  {"none",        mjFLEXSELF_NONE},
-  {"narrow",      mjFLEXSELF_NARROW},
-  {"bvh",         mjFLEXSELF_BVH},
-  {"sap",         mjFLEXSELF_SAP},
-  {"auto",        mjFLEXSELF_AUTO},
+  {"none",          mjFLEXSELF_NONE},
+  {"narrow",        mjFLEXSELF_NARROW},
+  {"bvh",           mjFLEXSELF_BVH},
+  {"sap",           mjFLEXSELF_SAP},
+  {"auto",          mjFLEXSELF_AUTO},
 };
 
 
 // flex elastic 2d type
 const mjMap elastic2d_map[5] = {
-  {"none",        0},
-  {"bend",        1},
-  {"stretch",     2},
-  {"both",        3},
+  {"none",          0},
+  {"bend",          1},
+  {"stretch",       2},
+  {"both",          3},
 };
 
 
@@ -1022,16 +1067,16 @@ void mjXReader::Compiler(XMLElement* section, mjSpec* s) {
     memcpy(s->compiler.eulerseq, text.c_str(), 3);
   }
   if (ReadAttrTxt(section, "assetdir", text)) {
-    mjs_setString(s->meshdir, text.c_str());
-    mjs_setString(s->texturedir, text.c_str());
+    mjs_setString(s->compiler.meshdir, text.c_str());
+    mjs_setString(s->compiler.texturedir, text.c_str());
   }
   // meshdir and texturedir take precedence over assetdir
   string meshdir, texturedir;
   if (ReadAttrTxt(section, "meshdir", meshdir)) {
-    mjs_setString(s->meshdir, meshdir.c_str());
+    mjs_setString(s->compiler.meshdir, meshdir.c_str());
   };
   if (ReadAttrTxt(section, "texturedir", texturedir)) {
-    mjs_setString(s->texturedir, texturedir.c_str());
+    mjs_setString(s->compiler.texturedir, texturedir.c_str());
   }
   if (MapValue(section, "discardvisual", &n, bool_map, 2)) {
     s->compiler.discardvisual = (n == 1);
@@ -1142,7 +1187,8 @@ void mjXReader::Option(XMLElement* section, mjOption* opt) {
     READDSBL("frictionloss", mjDSBL_FRICTIONLOSS)
     READDSBL("limit",        mjDSBL_LIMIT)
     READDSBL("contact",      mjDSBL_CONTACT)
-    READDSBL("passive",      mjDSBL_PASSIVE)
+    READDSBL("spring",       mjDSBL_SPRING)
+    READDSBL("damper",       mjDSBL_DAMPER)
     READDSBL("gravity",      mjDSBL_GRAVITY)
     READDSBL("clampctrl",    mjDSBL_CLAMPCTRL)
     READDSBL("warmstart",    mjDSBL_WARMSTART)
@@ -1154,6 +1200,7 @@ void mjXReader::Option(XMLElement* section, mjOption* opt) {
     READDSBL("eulerdamp",    mjDSBL_EULERDAMP)
     READDSBL("autoreset",    mjDSBL_AUTORESET)
     READDSBL("nativeccd",    mjDSBL_NATIVECCD)
+    READDSBL("island",       mjDSBL_ISLAND)
 #undef READDSBL
 
 #define READENBL(NAME, MASK) \
@@ -1166,7 +1213,6 @@ void mjXReader::Option(XMLElement* section, mjOption* opt) {
     READENBL("fwdinv",      mjENBL_FWDINV)
     READENBL("invdiscrete", mjENBL_INVDISCRETE)
     READENBL("multiccd",    mjENBL_MULTICCD)
-    READENBL("island",      mjENBL_ISLAND)
 #undef READENBL
   }
 }
@@ -1414,6 +1460,9 @@ void mjXReader::OneFlex(XMLElement* elem, mjsFlex* flex) {
     if (MapValue(cont, "vertcollide", &flex->vertcollide, bool_map, 2)) {
       flex->vertcollide = (n == 1);
     }
+    if (MapValue(cont, "passive", &flex->passive, bool_map, 2)) {
+      flex->passive = (n == 1);
+    }
     ReadAttrInt(cont, "activelayers", &flex->activelayers);
   }
 
@@ -1507,6 +1556,26 @@ void mjXReader::OneMesh(XMLElement* elem, mjsMesh* mesh, const mjVFS* vfs) {
     if (userface.has_value()) {
       mjs_setInt(mesh->userface, userface->data(), userface->size());
     }
+  }
+
+  // read builtin options
+  if (MapValue(elem, "builtin", &n, meshbuiltin_map, meshbuiltin_sz)) {
+    std::vector<double> params;
+    int nparams = ReadVector(elem, "params", params, text, /*required*/ true);
+    if (file) {
+      throw mjXError(elem, "builtin cannot be used with a mesh file");
+    }
+    if (!mesh->uservert->empty()) {
+      throw mjXError(elem, "builtin mesh cannot be used with user vertex data");
+    }
+    if (mjs_makeMesh(mesh, (mjtMeshBuiltin)n, params.data(), nparams)) {
+      throw mjXError(elem, mjs_getError(spec));
+    }
+  }
+
+  std::string material;
+  if (ReadAttrTxt(elem, "material", material)) {
+    mjs_setString(mesh->material, material.c_str());
   }
 
   // write error info
@@ -2655,6 +2724,9 @@ void mjXReader::OneFlexcomp(XMLElement* elem, mjsBody* body, const mjVFS* vfs) {
     if (MapValue(cont, "vertcollide", &n, bool_map, 2)) {
       dflex.vertcollide = (n == 1);
     }
+    if (MapValue(cont, "passive", &n, bool_map, 2)) {
+      dflex.passive = (n == 1);
+    }
     ReadAttrInt(cont, "activelayers", &dflex.activelayers);
   }
 
@@ -3305,6 +3377,10 @@ void mjXReader::Asset(XMLElement* section, const mjVFS* vfs) {
 
       if (content_type == "text/xml") {
         child = mj_parseXML(filename.c_str(), vfs, error.data(), error.size());
+#ifdef mjUSEUSD
+      } else if (content_type == "text/usd") {
+        child = mj_parseUSD(filename.c_str(), vfs, error.data(), error.size());
+#endif  // mjUSEUSD
       } else {
         throw mjXError(elem, "unsupported content_type: %s", content_type.c_str());
       }
@@ -4132,6 +4208,73 @@ void mjXReader::Sensor(XMLElement* section) {
       }
     }
 
+    // sensor for contacts; attached to geoms or bodies or a site
+    else if (type == "contact") {
+      // first matching criterion
+      bool has_site = ReadAttrTxt(elem, "site", objname);
+      bool has_body1 = ReadAttrTxt(elem, "body1", objname);
+      bool has_subtree1 = ReadAttrTxt(elem, "subtree1", objname);
+      bool has_geom1 = ReadAttrTxt(elem, "geom1", objname);
+      if (has_site + has_body1 + has_subtree1 + has_geom1 > 1) {
+        throw mjXError(elem, "at most one of (geom1, body1, subtree1, site) can be specified");
+      }
+      if (has_site)          { sensor->objtype = mjOBJ_SITE; }
+      else if (has_body1)    { sensor->objtype = mjOBJ_BODY; }
+      else if (has_subtree1) { sensor->objtype = mjOBJ_XBODY; }
+      else if (has_geom1)    { sensor->objtype = mjOBJ_GEOM; }
+      else                   { sensor->objtype = mjOBJ_UNKNOWN; }
+
+      // second matching criterion
+      bool has_body2 = ReadAttrTxt(elem, "body2", refname);
+      bool has_subtree2 = ReadAttrTxt(elem, "subtree2", refname);
+      bool has_geom2 = ReadAttrTxt(elem, "geom2", refname);
+      if (has_body2 + has_subtree2 + has_geom2 > 1) {
+        throw mjXError(elem, "at most one of (geom2, body2, subtree2) can be specified");
+      }
+      if (has_body2)         { sensor->reftype = mjOBJ_BODY; }
+      else if (has_subtree2) { sensor->reftype = mjOBJ_XBODY; }
+      else if (has_geom2)    { sensor->reftype = mjOBJ_GEOM; }
+      else                   { sensor->reftype = mjOBJ_UNKNOWN; }
+
+      // process data specification (intprm[0])
+      int dataspec = 1 << mjCONDATA_FOUND;
+      std::vector<int> condata(mjNCONDATA);
+      int nkeys = MapValues(elem, "data", condata.data(), condata_map, mjNCONDATA);
+      if (nkeys) {
+        dataspec = 1 << condata[0];
+
+        // check ordering while adding bits to dataspec
+        for (int i = 1; i < nkeys; ++i) {
+          if (condata[i] <= condata[i-1]) {
+            std::string correct_order;
+            for (int j = 0; j < mjNCONDATA; ++j) {
+              correct_order += condata_map[j].key;
+              if (j < mjNCONDATA - 1) correct_order += ", ";
+            }
+            throw mjXError(elem, "data attributes must be in order: %s", correct_order.c_str());
+          }
+          dataspec |= 1 << condata[i];
+        }
+      }
+      sensor->intprm[0] = dataspec;
+
+      // reduction type (intprm[1])
+      sensor->intprm[1] = 0;
+      if (MapValue(elem, "reduce", &n, reduce_map, reduce_sz)) {
+        sensor->intprm[1] = n;
+      }
+
+      // number of contacts (intprm[2])
+      sensor->intprm[2] = 1;
+      ReadAttrInt(elem, "num", &sensor->intprm[2]);
+      if (sensor->intprm[2] <= 0) {
+        throw mjXError(elem, "'num' must be positive in sensor");
+      }
+
+      // sensor type
+      sensor->type = mjSENS_CONTACT;
+    }
+
     // global sensors
     else if (type == "e_potential") {
       sensor->type = mjSENS_E_POTENTIAL;
@@ -4165,6 +4308,18 @@ void mjXReader::Sensor(XMLElement* section) {
       if (MapValue(elem, "datatype", &n, datatype_map, datatype_sz)) {
         sensor->datatype = (mjtDataType)n;
       }
+    }
+
+    // tactile sensor
+    if (type == "tactile") {
+      sensor->type = mjSENS_TACTILE;
+      sensor->reftype = mjOBJ_GEOM;
+      ReadAttrTxt(elem, "geom", refname, /*required=*/true);
+
+      // associate the sensor with a mesh
+      sensor->objtype = mjOBJ_MESH;
+      ReadAttrTxt(elem, "mesh", objname, /*required=*/true);
+      mjs_setString(sensor->objname, objname.c_str());
     }
 
     else if (type == "plugin") {

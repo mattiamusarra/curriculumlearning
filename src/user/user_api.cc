@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -26,9 +27,10 @@
 #include <vector>
 
 #include <mujoco/mujoco.h>
+#include "engine/engine_support.h"
+#include "user/user_cache.h"
 #include "user/user_model.h"
 #include "user/user_objects.h"
-#include "user/user_cache.h"
 #include "user/user_util.h"
 
 namespace {
@@ -295,7 +297,7 @@ int mjs_isWarning(mjSpec* s) {
 void mj_deleteSpec(mjSpec* s) {
   if (s) {
     mjCModel* model = static_cast<mjCModel*>(s->element);
-    delete model;
+    model->Release();
   }
 }
 
@@ -499,7 +501,159 @@ mjsMaterial* mjs_addMaterial(mjSpec* s, const mjsDefault* defspec) {
   return &material->spec;
 }
 
+// Sets the vertices and normals of a mesh.
+int mjs_makeMesh(mjsMesh* mesh, mjtMeshBuiltin builtin, double* params, int nparams) {
+  mjCMesh* meshC = static_cast<mjCMesh*>(mesh->element);
+  mjCModel* m = meshC->model;
+  switch (builtin) {
+    case mjMESH_BUILTIN_HEMISPHERE: {
+      if (nparams != 1) {
+        m->SetError(mjCError(0, "Hemisphere mesh type requires 1 parameter"));
+        return -1;
+      }
+      int subdiv = static_cast<int>(params[0]);
+      if (subdiv < 0) {
+        m->SetError(mjCError(0, "Hemisphere resolution cannot be negative"));
+        return -1;
+      }
+      if (subdiv > 10) {
+        m->SetError(mjCError(0, "Hemisphere resolution cannot be greater than 10"));
+        return -1;
+      }
+      meshC->MakeHemisphere(subdiv, /*make_faces*/ true, /*make_cap*/ true);
+      return 0;
+    }
 
+    case mjMESH_BUILTIN_SPHERE: {
+      if (nparams != 1) {
+        m->SetError(mjCError(0, "Sphere mesh type requires 1 parameter"));
+        return -1;
+      }
+      int subdiv = static_cast<int>(params[0]);
+      if (subdiv < 0) {
+        m->SetError(mjCError(0, "Sphere subdivision cannot be negative"));
+        return -1;
+      }
+      if (subdiv > 4) {
+        m->SetError(mjCError(0, "Sphere subdivision cannot be greater than 4"));
+        return -1;
+      }
+      meshC->MakeSphere(subdiv, /*make_faces*/ true);
+      return 0;
+    }
+
+    case mjMESH_BUILTIN_SUPERSPHERE: {
+      if (nparams != 3) {
+        m->SetError(mjCError(0, "Supersphere mesh type requires 3 parameters"));
+        return -1;
+      }
+      int res = static_cast<int>(params[0]);
+      if (res < 3) {
+        m->SetError(mjCError(0, "Supersphere resolution must be greater than 2"));
+        return -1;
+      }
+      double e = params[1];
+      if (e < 0) {
+        m->SetError(mjCError(0, "Supersphere 'e' cannot be negative"));
+        return -1;
+      }
+      double n = params[2];
+      if (n < 0) {
+        m->SetError(mjCError(0, "Supersphere 'n' cannot be negative"));
+        return -1;
+      }
+      meshC->MakeSupersphere(res, e, n);
+      return 0;
+    }
+
+    case mjMESH_BUILTIN_SUPERTORUS: {
+      if (nparams != 4) {
+        m->SetError(mjCError(0, "Supertorus mesh type requires 4 parameters"));
+        return -1;
+      }
+      int res = static_cast<int>(params[0]);
+      if (res < 3) {
+        m->SetError(mjCError(0, "Supertorus resolution must be greater than 3"));
+        return -1;
+      }
+      double radius = params[1];
+      if (radius <= 0 || radius > 1) {
+        m->SetError(mjCError(0, "Supertorus radius must be in (0, 1]"));
+        return -1;
+      }
+      double s = params[2];
+      if (s <= 0) {
+        m->SetError(mjCError(0, "Supertorus 's' must be greater than 0"));
+        return -1;
+      }
+      double t = params[3];
+      if (t <= 0) {
+        m->SetError(mjCError(0, "Supertorus 't' must be greater than 0"));
+        return -1;
+      }
+      meshC->MakeSupertorus(res, radius, s, t);
+      return 0;
+    }
+
+    case mjMESH_BUILTIN_WEDGE: {
+      if (nparams != 5) {
+        m->SetError(mjCError(0, "Wedge builtin mesh types require 5 parameters"));
+        return -1;
+      }
+      int resolution[2] = {static_cast<int>(params[0]),
+                           static_cast<int>(params[1])};
+      double fov[2] = {params[2], params[3]};
+      double gamma = params[4];
+      if (fov[0] <= 0 || fov[0] > 180) {
+        m->SetError(mjCError(0, "fov[0] must be a float between (0, 180] degrees"));
+        return -1;
+      }
+      if (fov[1] <= 0 || fov[1] > 90) {
+        m->SetError(mjCError(0, "`fov[1]` must be a float between (0, 90] degrees"));
+        return -1;
+      }
+      if (resolution[0] <= 0 || resolution[1] <= 0) {
+        m->SetError(mjCError(0, "Horizontal and vertical resolutions must be positive"));
+        return -1;
+      }
+      if (gamma < 0 || gamma > 1) {
+        m->SetError(mjCError(0, "`gamma` must be a nonnegative float between [0, 1]"));
+        return -1;
+      }
+      meshC->MakeWedge(resolution, fov, gamma);
+      return 0;
+    }
+
+    case mjMESH_BUILTIN_PLATE: {
+      if (nparams != 2) {
+        m->SetError(mjCError(0, "Plate builtin mesh type requires 2 parameters"));
+        return -1;
+      }
+      int resolution[2] = {static_cast<int>(params[0]),
+                           static_cast<int>(params[1])};
+      if (resolution[0] <= 0 || resolution[1] <= 0) {
+        m->SetError(mjCError(0, "Horizontal and vertical resolutions must be positive"));
+        return -1;
+      }
+      meshC->MakeRect(resolution);
+      return 0;
+    }
+
+    case mjMESH_BUILTIN_CONE: {
+      if (nparams != 2) {
+        m->SetError(mjCError(0, "Cone mesh type requires 2 parameters"));
+        return -1;
+      }
+      int nedge = static_cast<int>(params[0]);
+      meshC->MakeCone(nedge, params[1]);
+      return 0;
+    }
+
+    default:
+      m->SetError(mjCError(0, "Unsupported mesh type"));
+      return 1;
+  }
+}
 
 // add pair to model
 mjsPair* mjs_addPair(mjSpec* s, const mjsDefault* defspec) {
@@ -982,7 +1136,7 @@ mjsFrame* mjs_findFrame(mjSpec* s, const char* name) {
 
 // set frame
 int mjs_setFrame(mjsElement* dest, mjsFrame* frame) {
-  if (!frame) {
+  if (!frame || !dest) {
     return -1;
   }
   mjCFrame* frameC = static_cast<mjCFrame*>(frame->element);
@@ -1039,6 +1193,83 @@ const void* mjs_getUserValue(mjsElement* element, const char* key) {
 void mjs_deleteUserValue(mjsElement* element, const char* key) {
   mjCBase* baseC = static_cast<mjCBase*>(element);
   baseC->DeleteUserValue(key);
+}
+
+
+
+// return sensor dimension
+int mjs_sensorDim(const mjsSensor* sensor) {
+  switch (sensor->type) {
+  case mjSENS_TOUCH:
+  case mjSENS_RANGEFINDER:
+  case mjSENS_JOINTPOS:
+  case mjSENS_JOINTVEL:
+  case mjSENS_TENDONPOS:
+  case mjSENS_TENDONVEL:
+  case mjSENS_ACTUATORPOS:
+  case mjSENS_ACTUATORVEL:
+  case mjSENS_ACTUATORFRC:
+  case mjSENS_JOINTACTFRC:
+  case mjSENS_TENDONACTFRC:
+  case mjSENS_JOINTLIMITPOS:
+  case mjSENS_JOINTLIMITVEL:
+  case mjSENS_JOINTLIMITFRC:
+  case mjSENS_TENDONLIMITPOS:
+  case mjSENS_TENDONLIMITVEL:
+  case mjSENS_TENDONLIMITFRC:
+  case mjSENS_GEOMDIST:
+  case mjSENS_INSIDESITE:
+  case mjSENS_E_POTENTIAL:
+  case mjSENS_E_KINETIC:
+  case mjSENS_CLOCK:
+    return 1;
+
+  case mjSENS_CAMPROJECTION:
+    return 2;
+
+  case mjSENS_ACCELEROMETER:
+  case mjSENS_VELOCIMETER:
+  case mjSENS_GYRO:
+  case mjSENS_FORCE:
+  case mjSENS_TORQUE:
+  case mjSENS_MAGNETOMETER:
+  case mjSENS_BALLANGVEL:
+  case mjSENS_FRAMEPOS:
+  case mjSENS_FRAMEXAXIS:
+  case mjSENS_FRAMEYAXIS:
+  case mjSENS_FRAMEZAXIS:
+  case mjSENS_FRAMELINVEL:
+  case mjSENS_FRAMEANGVEL:
+  case mjSENS_FRAMELINACC:
+  case mjSENS_FRAMEANGACC:
+  case mjSENS_SUBTREECOM:
+  case mjSENS_SUBTREELINVEL:
+  case mjSENS_SUBTREEANGMOM:
+  case mjSENS_GEOMNORMAL:
+    return 3;
+
+  case mjSENS_GEOMFROMTO:
+    return 6;
+
+  case mjSENS_BALLQUAT:
+  case mjSENS_FRAMEQUAT:
+    return 4;
+
+  case mjSENS_CONTACT:
+    return sensor->intprm[2] * mju_condataSize(sensor->intprm[0]);
+
+  case mjSENS_TACTILE:
+    return 3 * static_cast<const mjCMesh*>(
+                   static_cast<mjCSensor*>(sensor->element)->get_obj())
+                   ->nvert();
+
+  case mjSENS_USER:
+    return sensor->dim;
+
+  case mjSENS_PLUGIN:
+    return 0;  // to be filled in by plugin
+  }
+  return -1;
 }
 
 
@@ -1499,22 +1730,63 @@ const void* mjs_getPluginAttributes(const mjsPlugin* plugin) {
 
 // -------------------------- GLOBAL ASSET CACHE -------------------------------
 
-void mj_setCacheSize(mjCache cache, std::size_t size) {
-  mjCCache* ccache = reinterpret_cast<mjCCache*>(cache);
-  if (ccache) {
-    ccache->SetMaxSize(size);
+// get the capacity of the asset cache in bytes
+size_t mj_getCacheCapacity(const mjCache* cache) {
+  if (cache) {
+    const mjCCache* ccache = reinterpret_cast<const mjCCache*>(cache->impl_);
+    if (ccache) {
+      return ccache->Capacity();
+    }
   }
+  return 0;
 }
 
 
+// set the capacity of the asset cache in bytes (0 to disable)
+size_t mj_setCacheCapacity(mjCache* cache, size_t size) {
+  if (cache) {
+    mjCCache* ccache = reinterpret_cast<mjCCache*>(cache->impl_);
+    if (ccache) {
+      ccache->SetCapacity(size);
+      return ccache->Capacity();
+    }
+  }
+  return 0;
+}
 
-mjCache mj_globalCache() {
+
+// get the current size of the asset cache in bytes
+size_t mj_getCacheSize(const mjCache* cache) {
+  if (cache) {
+    const mjCCache* ccache = reinterpret_cast<const mjCCache*>(cache->impl_);
+    if (ccache) {
+      return ccache->Size();
+    }
+  }
+  return 0;
+}
+
+
+// clear the asset cache
+void mj_clearCache(mjCache* cache) {
+  if (cache) {
+    mjCCache* ccache = reinterpret_cast<mjCCache*>(cache->impl_);
+    if (ccache) {
+      ccache->Reset();
+    }
+  }
+}
+
+// get the internal asset cache used by the compiler
+mjCache* mj_getCache() {
   // mjCCache is not trivially destructible and so the global cache needs to
   // allocated on the heap
   if constexpr (kGlobalCacheSize != 0) {
     static mjCCache* cache = new(std::nothrow) mjCCache(kGlobalCacheSize);
-    return (mjCache) cache;
+    static mjCache cache_cwrapper;
+    cache_cwrapper.impl_ = cache;
+    return cache->Capacity() > 0 ? &cache_cwrapper : nullptr;
   } else {
-    return NULL;
+    return nullptr;
   }
 }

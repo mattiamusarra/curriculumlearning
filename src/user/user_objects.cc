@@ -21,9 +21,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <limits>
-#include <map>
 #include <memory>
 #include <new>
 #include <optional>
@@ -31,12 +31,14 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "lodepng.h"
 #include "cc/array_safety.h"
 #include "engine/engine_passive.h"
+#include "engine/engine_support.h"
 #include <mujoco/mjspec.h>
 #include <mujoco/mujoco.h>
 #include "user/user_api.h"
@@ -76,7 +78,7 @@ PNGImage PNGImage::Load(const mjCBase* obj, mjResource* resource,
                         LodePNGColorType color_type) {
   PNGImage image;
   image.color_type_ = color_type;
-  mjCCache *cache = reinterpret_cast<mjCCache*>(mj_globalCache());
+  mjCCache *cache = reinterpret_cast<mjCCache*>(mj_getCache()->impl_);
 
   // cache callback
   auto callback = [&image](const void* data) {
@@ -556,6 +558,39 @@ int mjCBoundingVolumeHierarchy::MakeBVH(
 
 //------------------------- class mjCOctree implementation --------------------------------------------
 
+void mjCOctree::CopyLevel(int* level) const {
+  for (int i = 0; i < node_.size(); ++i) {
+    level[i] = node_[i].level;
+  }
+}
+
+void mjCOctree::CopyChild(int* child) const {
+  for (int i = 0; i < node_.size(); ++i) {
+    for (int j = 0; j < 8; ++j) {
+      child[i * 8 + j] = node_[i].child[j];
+    }
+  }
+}
+
+void mjCOctree::CopyAabb(mjtNum* aabb) const {
+  for (int i = 0; i < node_.size(); ++i) {
+    aabb[i * 6 + 0] = (node_[i].aamm[0] + node_[i].aamm[3]) / 2;
+    aabb[i * 6 + 1] = (node_[i].aamm[1] + node_[i].aamm[4]) / 2;
+    aabb[i * 6 + 2] = (node_[i].aamm[2] + node_[i].aamm[5]) / 2;
+    aabb[i * 6 + 3] = (node_[i].aamm[3] - node_[i].aamm[0]) / 2;
+    aabb[i * 6 + 4] = (node_[i].aamm[4] - node_[i].aamm[1]) / 2;
+    aabb[i * 6 + 5] = (node_[i].aamm[5] - node_[i].aamm[2]) / 2;
+  }
+}
+
+void mjCOctree::CopyCoeff(mjtNum* coeff) const {
+  for (int i = 0; i < node_.size(); ++i) {
+    for (int j = 0; j < 8; ++j) {
+      coeff[i * 8 + j] = node_[i].coeff[j];
+    }
+  }
+}
+
 void mjCOctree::SetFace(const std::vector<double>& vert, const std::vector<int>& face) {
   for (int i = 0; i < face.size(); i += 3) {
     std::array<double, 3> v0 = {vert[3*face[i+0]], vert[3*face[i+0]+1], vert[3*face[i+0]+2]};
@@ -592,69 +627,386 @@ void mjCOctree::CreateOctree(const double aamm[6]) {
   std::vector<Triangle*> elements_ptrs(elements.size());
   std::transform(elements.begin(), elements.end(), elements_ptrs.begin(),
                  [](Triangle& triangle) { return &triangle; });
-  MakeOctree(elements_ptrs, box);
+  std::unordered_map<Point, int> vert_map;
+  MakeOctree(elements_ptrs, box, vert_map);
+  MarkHangingNodes();
 }
 
 
-static bool boxTriangle(const Triangle& element, const double aamm[6]) {
+static double dot2(const double* a, const double* b) {
+  return a[0] * b[0] + a[1] * b[1];
+}
+
+
+// From M. Schwarz and H.-P. Seidel, "Fast Parallel Surface and Solid Voxelization on GPUs".
+static bool boxTriangle(const Triangle& v, const double aamm[6]) {
+  // bounding box tests
   for (int i = 0; i < 3; i++) {
-    if (element[0][i] < aamm[i] && element[1][i] < aamm[i] && element[2][i] < aamm[i]) {
+    if (v[0][i] < aamm[i] && v[1][i] < aamm[i] && v[2][i] < aamm[i]) {
       return false;
     }
     int j = i + 3;
-    if (element[0][i] > aamm[j] && element[1][i] > aamm[j] && element[2][i] > aamm[j]) {
+    if (v[0][i] > aamm[j] && v[1][i] > aamm[j] && v[2][i] > aamm[j]) {
       return false;
     }
   }
-  // TODO: add additionally separating axis tests
+
+  // test for triangle plane and box overlap
+  double n[3];
+  double e[3][3];
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+      e[i][j] = v[(i+1)%3][j] - v[i][j];
+    }
+  }
+
+  mjuu_crossvec(n, e[0], e[1]);
+  double size[3] = {aamm[3] - aamm[0], aamm[4] - aamm[1], aamm[5] - aamm[2]};
+  double c[3] = {n[0] > 0 ? size[0] : 0, n[1] > 0 ? size[1] : 0, n[2] > 0 ? size[2] : 0};
+  double c1[3] = {c[0] - v[0][0], c[1] - v[0][1], c[2] - v[0][2]};
+  double c2[3] = {size[0] - c[0] - v[0][0], size[1] - c[1] - v[0][1], size[2] - c[2] - v[0][2]};
+
+  if ((mjuu_dot3(n, aamm) + mjuu_dot3(n, c1)) * (mjuu_dot3(n, aamm) + mjuu_dot3(n, c2)) > 0) {
+    return false;
+  }
+
+  // test projection overlap
+  for (int a = 0; a < 3; a++) {
+    int b = (a + 1) % 3;
+    int c = (a + 2) % 3;
+    for (int i = 0; i < 3; i++) {
+      double sign = n[a] >= 0 ? 1 : -1;
+      double ne[2] = {-e[i][c] * sign, e[i][b] * sign};
+      double vi[2] = {v[i][b], v[i][c]};
+      double d = -dot2(ne, vi) + mju_max(0, size[b]*ne[0]) + mju_max(0, size[c]*ne[1]);
+      double p[2] = {aamm[b], aamm[c]};
+      if (dot2(ne, p) + d < 0) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
 
-int mjCOctree::MakeOctree(const std::vector<Triangle*>& elements, const double aamm[6], int lev) {
-  level_.push_back(lev);
+void mjCOctree::TaskToNode(const OctreeTask& task, OctNode& node,
+                           std::unordered_map<Point, int>& vert_map) {
+  node.level = task.lev;
+  node.parent_index = task.parent_index;
+  node.child_slot = task.child_slot;
 
-  // create a new node
-  int index = nnode_++;
-  double aabb[6] = {(aamm[0] + aamm[3]) / 2, (aamm[1] + aamm[4]) / 2, (aamm[2] + aamm[5]) / 2,
-                    (aamm[3] - aamm[0]) / 2, (aamm[4] - aamm[1]) / 2, (aamm[5] - aamm[2]) / 2};
-  for (int i = 0; i < 6; i++) {
-    node_.push_back(aabb[i]);
+  if (task.parent_index != -1) {
+    node_[task.parent_index].child[task.child_slot] = task.node_index;
+    const auto parent_aamm = node_[task.parent_index].aamm;
+    node.aamm[0] = task.child_slot & 1 ? (parent_aamm[3] + parent_aamm[0]) / 2 : parent_aamm[0];
+    node.aamm[1] = task.child_slot & 2 ? (parent_aamm[4] + parent_aamm[1]) / 2 : parent_aamm[1];
+    node.aamm[2] = task.child_slot & 4 ? (parent_aamm[5] + parent_aamm[2]) / 2 : parent_aamm[2];
+    node.aamm[3] = task.child_slot & 1 ? parent_aamm[3] : (parent_aamm[0] + parent_aamm[3]) / 2;
+    node.aamm[4] = task.child_slot & 2 ? parent_aamm[4] : (parent_aamm[1] + parent_aamm[4]) / 2;
+    node.aamm[5] = task.child_slot & 4 ? parent_aamm[5] : (parent_aamm[2] + parent_aamm[5]) / 2;
   }
+
   for (int i = 0; i < 8; i++) {
-    child_.push_back(-1);
+    Point v = {{(i & 1) ? node.aamm[3] : node.aamm[0],
+                (i & 2) ? node.aamm[4] : node.aamm[1],
+                (i & 4) ? node.aamm[5] : node.aamm[2]}};
+    auto it = vert_map.find(v);
+    if (it != vert_map.end()) {
+      node.vertid[i] = it->second;
+    } else {
+      node.vertid[i] = nvert_;
+      vert_map[v] = nvert_++;
+      vert_.push_back(v);
+    }
+    node.child[i] = -1;
+  }
+}
+
+
+void mjCOctree::Subdivide(const OctreeTask& task, std::unordered_map<Point, int>& vert_map,
+                          std::deque<OctreeTask>* queue, const std::vector<Triangle*>& colliding) {
+  for (int i = 0; i < 8; i++) {
+    OctreeTask new_task;
+    new_task.elements = colliding;
+    new_task.lev = task.lev + 1;
+    new_task.parent_index = task.node_index;
+    new_task.node_index = nnode_++;
+    new_task.child_slot = i;
+
+    node_.push_back(OctNode());
+    TaskToNode(new_task, node_.back(), vert_map);
+    if (queue) {
+      queue->push_back(std::move(new_task));
+    }
+  }
+}
+
+
+// recursively finds the adjacent ancestor neighbor region
+int mjCOctree::FindCoarseNeighbor(int node_idx, int dir) {
+  if (node_idx == -1) {
+    return -1;
   }
 
-  // find all triangles that intersect the current box
-  std::vector<Triangle*> colliding;
-  for (auto* element : elements) {
-    if (boxTriangle(*element, aamm)) {
-      colliding.push_back(element);
+  int parent_idx = node_[node_idx].parent_index;
+
+  // if we are at the root, we have no parent and thus no siblings or external neighbors
+  if (parent_idx == -1) {
+    return -1;
+  }
+
+  int child_slot = node_[node_idx].child_slot;
+  int dim = dir / 2;
+  int side = dir % 2;
+  int bit = 1 << dim;
+
+  if (side != ((child_slot & bit) != 0)) {
+    // internal neighbor case: This is the successful termination of the climb
+    // return the adjacent sibling node
+    return node_[parent_idx].child[child_slot ^ bit];
+  } else {
+    // external neighbor case: Recurse up the tree
+    // ask our parent to find its neighbor in the same direction
+    return FindCoarseNeighbor(parent_idx, dir);
+  }
+}
+
+
+int mjCOctree::FindNeighbor(int node_idx, int dir) {
+  if (node_idx == -1) {
+    return -1;
+  }
+
+  // call the helper to find the adjacent to the coarse neighbor.
+  // this might be an internal node (e.g., our parent's sibling)
+  int result = FindCoarseNeighbor(node_idx, dir);
+
+  if (result == -1) {
+    // no neighbor found (either at tree boundary or some other error)
+    return -1;
+  }
+
+  // leaf descent
+  double node_center[3] = {
+      (node_[node_idx].aamm[0] + node_[node_idx].aamm[3]) / 2,
+      (node_[node_idx].aamm[1] + node_[node_idx].aamm[4]) / 2,
+      (node_[node_idx].aamm[2] + node_[node_idx].aamm[5]) / 2,
+  };
+
+  while (node_[result].child[0] != -1) {
+    double result_center[3] = {
+        (node_[result].aamm[0] + node_[result].aamm[3]) / 2,
+        (node_[result].aamm[1] + node_[result].aamm[4]) / 2,
+        (node_[result].aamm[2] + node_[result].aamm[5]) / 2,
+    };
+
+    // find relative octant of our node w.r.t. the neighbor's center
+    int next_child_slot = 0;
+    if (node_center[0] > result_center[0]) next_child_slot |= 1;
+    if (node_center[1] > result_center[1]) next_child_slot |= 2;
+    if (node_center[2] > result_center[2]) next_child_slot |= 4;
+
+    int dim = dir / 2;
+    int side = dir % 2;
+    int bit = 1 << dim;
+
+    // we need the child on the opposite side (adjacent to this node)
+    int op_side = (side != 1);
+    next_child_slot = (next_child_slot & ~bit) | (op_side * bit);
+    result = node_[result].child[next_child_slot];
+  }
+
+  return result;
+}
+
+
+// refine the octree by subdividing nodes that are too coarse such that the
+// maximum level difference between adjacent nodes is at most 1.
+void mjCOctree::BalanceOctree(std::unordered_map<Point, int>& vert_map) {
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    std::vector<int> leaves;
+    for (int i = 0; i < nnode_; ++i) {
+      if (node_[i].child[0] == -1) {
+        leaves.push_back(i);
+      }
+    }
+
+    // find the nodes that are too coarse, only leaves need to be checked
+    std::vector<int> leaves_to_subdivide;
+    for (int leaf_idx : leaves) {
+      if (node_[leaf_idx].child[0] != -1) {
+        continue;
+      }
+
+      for (int dir = 0; dir < 6; ++dir) {
+        int neighbor_idx = FindNeighbor(leaf_idx, dir);
+        if (neighbor_idx == -1) {
+          continue;
+        }
+        int neighbor_level = node_[neighbor_idx].level;
+        if (neighbor_level > node_[leaf_idx].level + 1) {
+          leaves_to_subdivide.push_back(leaf_idx);
+        }
+        if (node_[leaf_idx].level > neighbor_level + 1) {
+          leaves_to_subdivide.push_back(neighbor_idx);
+        }
+      }
+    }
+
+    // subdivide the nodes that are too coarse
+    if (!leaves_to_subdivide.empty()) {
+      changed = true;
+      for (int node_idx : leaves_to_subdivide) {
+        if (node_[node_idx].child[0] == -1) {  // check if not already subdivided
+          OctreeTask task;
+          task.node_index = node_idx;
+          task.lev = node_[node_idx].level;
+          Subdivide(task, vert_map);
+        }
+      }
+    }
+  }
+}
+
+
+// mark all hanging vertices in the octree
+void mjCOctree::MarkHangingNodes() {
+  hang_.assign(nvert_, std::vector<int>());
+
+  std::vector<int> leaves;
+  for (int i = 0; i < nnode_; ++i) {
+    if (node_[i].child[0] == -1) {
+      leaves.push_back(i);
     }
   }
 
-  // return if the box is empty
-  if (colliding.empty() || lev >= 6) {
-    return index;
+  for (int leaf_idx : leaves) {
+    for (int dir = 0; dir < 6; ++dir) {
+      int neighbor_idx = FindNeighbor(leaf_idx, dir);
+      if (neighbor_idx == -1 ||
+          node_[neighbor_idx].level >= node_[leaf_idx].level) {
+        continue;
+      }
+
+      // coarser neighbor found, this leaf's face has hanging nodes
+      int dim = dir / 2;
+      int side = dir % 2;
+
+      // iterate over the 4 vertices of the leaf's face
+      for (int i = 0; i < 4; ++i) {
+        // construct vertex index on the face
+        int v_idx = side << dim;
+        int d1 = (dim + 1) % 3;
+        int d2 = (dim + 2) % 3;
+        v_idx |= (i & 1) << d1;
+        v_idx |= ((i >> 1) & 1) << d2;
+
+        int hv_id = node_[leaf_idx].vertid[v_idx];
+        if (!hang_[hv_id].empty()) {
+          continue;  // already processed
+        }
+
+        const double* hv_pos = vert_[hv_id].p.data();
+        const auto& neighbor_aamm = node_[neighbor_idx].aamm;
+
+        bool is_min[3], is_max[3];
+        int on_boundary_planes = 0;
+        for (int d = 0; d < 3; ++d) {
+          is_min[d] = std::abs(hv_pos[d] - neighbor_aamm[d]) < 1e-9;
+          is_max[d] = std::abs(hv_pos[d] - neighbor_aamm[d + 3]) < 1e-9;
+          if (is_min[d] || is_max[d]) {
+            on_boundary_planes++;
+          }
+        }
+
+        if (on_boundary_planes == 2) {  // edge hanging
+          int d_mid = -1;
+          for (int d = 0; d < 3; ++d) {
+            if (!is_min[d] && !is_max[d]) {
+              d_mid = d;
+              break;
+            }
+          }
+
+          int bits[3];
+          bits[d_mid] = 0;  // this will be toggled
+          bits[(d_mid + 1) % 3] = is_max[(d_mid + 1) % 3];
+          bits[(d_mid + 2) % 3] = is_max[(d_mid + 2) % 3];
+
+          int nv_idx1 = (bits[2] << 2) | (bits[1] << 1) | bits[0];
+          bits[d_mid] = 1;
+          int nv_idx2 = (bits[2] << 2) | (bits[1] << 1) | bits[0];
+
+          hang_[hv_id].push_back(node_[neighbor_idx].vertid[nv_idx1]);
+          hang_[hv_id].push_back(node_[neighbor_idx].vertid[nv_idx2]);
+        } else if (on_boundary_planes == 1) {  // face hanging
+          int d_face = -1;
+          for (int d = 0; d < 3; ++d) {
+            if (is_min[d] || is_max[d]) {
+              d_face = d;
+              break;
+            }
+          }
+
+          int bits[3];
+          bits[d_face] = is_max[d_face];
+
+          for (int j = 0; j < 4; ++j) {
+            bits[(d_face + 1) % 3] = j & 1;
+            bits[(d_face + 2) % 3] = (j >> 1) & 1;
+            int nv_idx = (bits[2] << 2) | (bits[1] << 1) | bits[0];
+            hang_[hv_id].push_back(node_[neighbor_idx].vertid[nv_idx]);
+          }
+        }
+      }
+    }
+  }
+}
+
+
+void mjCOctree::MakeOctree(const std::vector<Triangle*>& elements, const double aamm[6],
+                           std::unordered_map<Point, int>& vert_map) {
+  std::deque<OctreeTask> queue;
+  OctreeTask initial_task;
+  initial_task.elements = elements;
+  initial_task.lev = 0;
+  initial_task.parent_index = -1;
+  initial_task.child_slot = -1;
+  initial_task.node_index = nnode_++;
+  queue.push_back(std::move(initial_task));
+
+  // create root node
+  node_.push_back(OctNode());
+  OctNode& root = node_.back();
+  std::copy(aamm, aamm + 6, root.aamm.data());
+  TaskToNode(queue.front(), node_.back(), vert_map);
+
+  while (!queue.empty()) {
+    OctreeTask task = std::move(queue.front());
+    queue.pop_front();
+
+    // find all triangles that intersect the current box
+    std::vector<Triangle*> colliding;
+    for (auto* element : task.elements) {
+      if (boxTriangle(*element, node_[task.node_index].aamm.data())) {
+        colliding.push_back(element);
+      }
+    }
+
+    // skip if the box is empty
+    if (colliding.empty() || task.lev >= 6) {
+      continue;
+    }
+
+    // subdivide the node
+    Subdivide(task, vert_map, &queue, colliding);
   }
 
-  // split the box into 8 sub-boxes
-  double new_aamm[8][6];
-  for (int i = 0; i < 8; i++) {
-    new_aamm[i][0] = aabb[0] + aabb[3] * (i & 1 ? -1 : 0);
-    new_aamm[i][1] = aabb[1] + aabb[4] * (i & 2 ? -1 : 0);
-    new_aamm[i][2] = aabb[2] + aabb[5] * (i & 4 ? -1 : 0);
-    new_aamm[i][3] = aabb[0] + aabb[3] * (i & 1 ? 0 : 1);
-    new_aamm[i][4] = aabb[1] + aabb[4] * (i & 2 ? 0 : 1);
-    new_aamm[i][5] = aabb[2] + aabb[5] * (i & 4 ? 0 : 1);
-  }
-
-  // recursive calls to create sub-boxes
-  for (int i = 0; i < 8; i++) {
-    child_[8*index + i] = MakeOctree(colliding, new_aamm[i], lev + 1);
-  }
-
-  return index;
+  // store the neighbors of each node
+  BalanceOctree(vert_map);
 }
 
 //------------------------- class mjCDef implementation --------------------------------------------
@@ -858,6 +1210,13 @@ void mjCBase::NameSpace(const mjCModel* m) {
 
 
 
+mjsCompiler* mjCBase::FindCompiler(const mjsCompiler* compiler) const {
+  mjSpec* origin = model->FindSpec(compiler);
+  return origin ? &origin->compiler : &model->spec.compiler;
+}
+
+
+
 // load resource if found (fallback to OS filesystem)
 mjResource* mjCBase::LoadResource(const std::string& modelfiledir,
                                   const std::string& filename,
@@ -961,8 +1320,7 @@ mjCBody::mjCBody(mjCModel* _model) {
 
 mjCBody::mjCBody(const mjCBody& other, mjCModel* _model) {
   model = _model;
-  mjSpec* origin = model->FindSpec(other.compiler);
-  compiler = origin ? &origin->compiler : &model->spec.compiler;
+  compiler = FindCompiler(other.compiler);
   *this = other;
   CopyPlugin();
 }
@@ -1037,7 +1395,8 @@ mjCBody& mjCBody::operator+=(const mjCBody& other) {
 mjCBody& mjCBody::operator+=(const mjCFrame& other) {
   // append a copy of the attached spec
   if (other.model != model && !model->FindSpec(&other.model->spec.compiler)) {
-    model->AppendSpec(mj_copySpec(&other.model->spec), &other.model->spec.compiler);
+    model->AppendSpec(&other.model->spec, &other.model->spec.compiler);
+    static_cast<mjCModel*>(other.model->spec.element)->AddRef();
   }
 
   // create a copy of the subtree that contains the frame
@@ -1660,45 +2019,101 @@ mjCBase* mjCBody::FindObject(mjtObj type, std::string _name, bool recursive) {
 
 
 
-// return true if child is descendant of this body
-bool mjCBody::IsAncestor(const mjCBody* child) const {
-  if (!child) {
-    return false;
-  }
+// get list of a given type
+template<>
+const std::vector<mjCBody*>& mjCBody::GetList<mjCBody>() const {
+  return bodies;
+}
 
-  if (child == this) {
-    return true;
-  }
+template<>
+const std::vector<mjCJoint*>& mjCBody::GetList<mjCJoint>() const {
+  return joints;
+}
 
-  return IsAncestor(child->parent);
+template<>
+const std::vector<mjCGeom*>& mjCBody::GetList<mjCGeom>() const {
+  return geoms;
+}
+
+template<>
+const std::vector<mjCSite*>& mjCBody::GetList<mjCSite>() const {
+  return sites;
+}
+
+template<>
+const std::vector<mjCCamera*>& mjCBody::GetList<mjCCamera>() const {
+  return cameras;
+}
+
+template<>
+const std::vector<mjCLight*>& mjCBody::GetList<mjCLight>() const {
+  return lights;
+}
+
+template<>
+const std::vector<mjCFrame*>& mjCBody::GetList<mjCFrame>() const {
+  return frames;
 }
 
 
 
+// gets next child of the same type, recursively depth first if requested
 template <class T>
-mjsElement* mjCBody::GetNext(const std::vector<T*>& list, const mjsElement* child) {
-  if (list.empty()) {
-    // no children
+static mjsElement* GetNext(const mjCBody* body, const mjsElement* child,
+                           bool* found, bool recursive) {
+  std::vector<T*> list = body->GetList<T>();
+
+  for (unsigned int i = 0; i < list.size(); i++) {
+    if (*found) {
+      return list[i]->spec.element;
+    }
+
+    if (list[i]->spec.element == child) {
+      *found = true;
+    }
+  }
+
+  if (!recursive) {
     return nullptr;
   }
 
-  for (unsigned int i = 0; i < list.size() - (child ? 1 : 0); i++) {
-    if (!IsAncestor(list[i]->GetParent())) {
-      continue;  // TODO: this recursion is wasteful
-    }
-
-    // first child in this body
-    if (!child) {
-      return list[i]->spec.element;
-
-    // next child is in this body
-    } else if (list[i]->spec.element == child && IsAncestor(list[i+1]->GetParent())) {
-      return list[i+1]->spec.element;
+  for (auto& other : body->Bodies()) {
+    mjsElement* candidate = GetNext<T>(other, child, found, true);
+    if (candidate) {
+      return candidate;
     }
   }
 
   return nullptr;
 }
+
+
+
+// get next body depth first
+static mjsElement* GetNextBody(const mjCBody* body, const mjsElement* child,
+                              bool* found, bool recursive) {
+  for (auto& other : body->Bodies()) {
+    if (*found) {
+      return other->spec.element;
+    }
+
+    if (other->spec.element == child) {
+      *found = true;
+    }
+
+    if (!recursive) {
+      continue;
+    }
+
+    mjsElement* candidate = GetNextBody(other, child, found, true);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return nullptr;
+}
+
 
 
 
@@ -1714,30 +2129,30 @@ mjsElement* mjCBody::NextChild(const mjsElement* child, mjtObj type, bool recurs
     throw mjCError(this, "child element is not of requested type");
   }
 
-
   mjsElement* candidate = nullptr;
+  bool found = child == nullptr;
   switch (type) {
     case mjOBJ_BODY:
     case mjOBJ_XBODY:
-      candidate = GetNext(recursive ? model->bodies_ : bodies, child);
+      candidate = GetNextBody(this, child, &found, recursive);
       break;
     case mjOBJ_JOINT:
-      candidate = GetNext(recursive ? model->joints_ : joints, child);
+      candidate = GetNext<mjCJoint>(this, child, &found, recursive);
       break;
     case mjOBJ_GEOM:
-      candidate = GetNext(recursive ? model->geoms_ : geoms, child);
+      candidate = GetNext<mjCGeom>(this, child, &found, recursive);
       break;
     case mjOBJ_SITE:
-      candidate = GetNext(recursive ? model->sites_ : sites, child);
+      candidate = GetNext<mjCSite>(this, child, &found, recursive);
       break;
     case mjOBJ_CAMERA:
-      candidate = GetNext(recursive ? model->cameras_ : cameras, child);
+      candidate = GetNext<mjCCamera>(this, child, &found, recursive);
       break;
     case mjOBJ_LIGHT:
-      candidate = GetNext(recursive ? model->lights_ : lights, child);
+      candidate = GetNext<mjCLight>(this, child, &found, recursive);
       break;
     case mjOBJ_FRAME:
-      candidate = GetNext(recursive ? model->frames_ : frames, child);
+      candidate = GetNext<mjCFrame>(this, child, &found, recursive);
       break;
     default:
       throw mjCError(this,
@@ -1758,11 +2173,12 @@ void mjCBody::InertiaFromGeom(void) {
   double toti[6] = {0, 0, 0, 0, 0, 0};
   std::vector<mjCGeom*> sel;
 
-  // select geoms based on group
+  // select geoms based on group, ignore tiny masses
   sel.clear();
   for (int i=0; i < geoms.size(); i++) {
     if (geoms[i]->group >= compiler->inertiagrouprange[0] &&
-        geoms[i]->group <= compiler->inertiagrouprange[1]) {
+        geoms[i]->group <= compiler->inertiagrouprange[1] &&
+        geoms[i]->mass_ > mjEPS) {
       sel.push_back(geoms[i]);
     }
   }
@@ -2235,7 +2651,8 @@ mjCFrame& mjCFrame::operator=(const mjCFrame& other) {
 mjCFrame& mjCFrame::operator+=(const mjCBody& other) {
   // append a copy of the attached spec
   if (other.model != model && !model->FindSpec(&other.model->spec.compiler)) {
-    model->AppendSpec(mj_copySpec(&other.model->spec), &other.model->spec.compiler);
+    model->AppendSpec(&other.model->spec, &other.model->spec.compiler);
+    static_cast<mjCModel*>(other.model->spec.element)->AddRef();
   }
 
   // apply namespace and store keyframes in the source model
@@ -3220,7 +3637,12 @@ void mjCGeom::ComputeAABB(void) {
   mjuu_copyvec(aabb+3, size, 3);
 }
 
-
+const std::string& mjCGeom::get_material() const {
+  if (mesh && spec_material_.empty()) {
+    return mesh->Material();
+  }
+  return spec_material_;
+}
 
 // compiler
 void mjCGeom::Compile(void) {
@@ -3949,9 +4371,6 @@ void mjCHField::NameSpace(const mjCModel* m) {
   if (modelfiledir_.empty()) {
     modelfiledir_ = FilePath(m->spec_modelfiledir_);
   }
-  if (meshdir_.empty()) {
-    meshdir_ = FilePath(m->spec_meshdir_);
-  }
 }
 
 
@@ -4075,9 +4494,8 @@ void mjCHField::Compile(const mjVFS* vfs) {
     if (modelfiledir_.empty()) {
       modelfiledir_ = FilePath(model->modelfiledir_);
     }
-    if (meshdir_.empty()) {
-      meshdir_ = FilePath(model->meshdir_);
-    }
+    mujoco::user::FilePath meshdir_;
+    meshdir_ = FilePath(mjs_getString(compiler->meshdir));
 
     FilePath filename = meshdir_ + FilePath(file_);
     mjResource* resource = LoadResource(modelfiledir_.Str(), filename.Str(), vfs);
@@ -4211,9 +4629,6 @@ void mjCTexture::NameSpace(const mjCModel* m) {
   mjCBase::NameSpace(m);
   if (modelfiledir_.empty()) {
     modelfiledir_ = FilePath(m->spec_modelfiledir_);
-  }
-  if (texturedir_.empty()) {
-    texturedir_ = FilePath(m->spec_texturedir_);
   }
 }
 
@@ -4804,6 +5219,8 @@ void mjCTexture::LoadCubeSeparate(const mjVFS* vfs) {
       }
 
       // make filename
+      mujoco::user::FilePath texturedir_;
+      texturedir_ = FilePath(mjs_getString(compiler->texturedir));
       FilePath filename = texturedir_ + FilePath(cubefiles_[i]);
 
       // load PNG or custom
@@ -4882,9 +5299,8 @@ void mjCTexture::Compile(const mjVFS* vfs) {
   if (modelfiledir_.empty()) {
     modelfiledir_ = FilePath(model->modelfiledir_);
   }
-  if (texturedir_.empty()) {
-    texturedir_ = FilePath(model->texturedir_);
-  }
+  mujoco::user::FilePath texturedir_;
+  texturedir_ = FilePath(mjs_getString(compiler->texturedir));
 
   // buffer from user
   if (!data_.empty()) {
@@ -6621,15 +7037,19 @@ void mjCSensor::ResolveReferences(const mjCModel* m) {
       throw mjCError(this, "unrecognized name '%s' of sensorized object", objname_.c_str());
     }
 
-    // if geom mark it as non visual
+    // if geom or mesh, mark it as non visual
     if (objtype == mjOBJ_GEOM) {
-      ((mjCGeom*)obj)->SetNotVisual();
+      static_cast<mjCGeom*>(obj)->SetNotVisual();
+    }
+    if (objtype == mjOBJ_MESH) {
+      static_cast<mjCMesh*>(obj)->SetNotVisual();
     }
 
   } else if (type != mjSENS_E_POTENTIAL &&
              type != mjSENS_E_KINETIC   &&
              type != mjSENS_CLOCK       &&
              type != mjSENS_PLUGIN      &&
+             type != mjSENS_CONTACT     &&
              type != mjSENS_USER) {
     throw mjCError(this, "invalid type in sensor");
   }
@@ -6646,6 +7066,14 @@ void mjCSensor::ResolveReferences(const mjCModel* m) {
       throw mjCError(this, "unrecognized name '%s' of object", refname_.c_str());
     }
 
+    // if geom or mesh, mark it as non visual
+    if (reftype == mjOBJ_GEOM) {
+      static_cast<mjCGeom*>(ref)->SetNotVisual();
+    }
+    if (reftype == mjOBJ_MESH) {
+      static_cast<mjCMesh*>(ref)->SetNotVisual();
+    }
+
     // must be attached to object with spatial frame
     if (reftype != mjOBJ_BODY && reftype != mjOBJ_XBODY &&
         reftype != mjOBJ_GEOM && reftype != mjOBJ_SITE && reftype != mjOBJ_CAMERA) {
@@ -6660,7 +7088,131 @@ void mjCSensor::ResolveReferences(const mjCModel* m) {
   suffix.clear();
 }
 
+// return sensor datatype
+mjtDataType sensorDatatype(mjtSensor type) {
+  switch (type) {
+  case mjSENS_TOUCH:
+  case mjSENS_RANGEFINDER:
+  case mjSENS_INSIDESITE:
+    return mjDATATYPE_POSITIVE;
 
+  case mjSENS_FRAMEXAXIS:
+  case mjSENS_FRAMEYAXIS:
+  case mjSENS_FRAMEZAXIS:
+  case mjSENS_GEOMNORMAL:
+    return mjDATATYPE_AXIS;
+
+  case mjSENS_BALLQUAT:
+  case mjSENS_FRAMEQUAT:
+    return mjDATATYPE_QUATERNION;
+
+  case mjSENS_ACCELEROMETER:
+  case mjSENS_VELOCIMETER:
+  case mjSENS_GYRO:
+  case mjSENS_FORCE:
+  case mjSENS_TORQUE:
+  case mjSENS_MAGNETOMETER:
+  case mjSENS_CAMPROJECTION:
+  case mjSENS_JOINTPOS:
+  case mjSENS_JOINTVEL:
+  case mjSENS_TENDONPOS:
+  case mjSENS_TENDONVEL:
+  case mjSENS_ACTUATORPOS:
+  case mjSENS_ACTUATORVEL:
+  case mjSENS_ACTUATORFRC:
+  case mjSENS_JOINTACTFRC:
+  case mjSENS_TENDONACTFRC:
+  case mjSENS_BALLANGVEL:
+  case mjSENS_JOINTLIMITPOS:
+  case mjSENS_JOINTLIMITVEL:
+  case mjSENS_JOINTLIMITFRC:
+  case mjSENS_TENDONLIMITPOS:
+  case mjSENS_TENDONLIMITVEL:
+  case mjSENS_TENDONLIMITFRC:
+  case mjSENS_FRAMEPOS:
+  case mjSENS_FRAMELINVEL:
+  case mjSENS_FRAMEANGVEL:
+  case mjSENS_FRAMELINACC:
+  case mjSENS_FRAMEANGACC:
+  case mjSENS_SUBTREECOM:
+  case mjSENS_SUBTREELINVEL:
+  case mjSENS_SUBTREEANGMOM:
+  case mjSENS_GEOMDIST:
+  case mjSENS_GEOMFROMTO:
+  case mjSENS_CONTACT:
+  case mjSENS_TACTILE:
+  case mjSENS_E_POTENTIAL:
+  case mjSENS_E_KINETIC:
+  case mjSENS_CLOCK:
+  case mjSENS_PLUGIN:
+  case mjSENS_USER:
+    return mjDATATYPE_REAL;
+  }
+
+  return mjDATATYPE_REAL;  // all cases are covered but GCC is extra persnickety
+}
+
+// return sensor needstage
+mjtStage sensorNeedstage(mjtSensor type) {
+  switch (type) {
+  case mjSENS_TOUCH:
+  case mjSENS_ACCELEROMETER:
+  case mjSENS_FORCE:
+  case mjSENS_TORQUE:
+  case mjSENS_ACTUATORFRC:
+  case mjSENS_JOINTACTFRC:
+  case mjSENS_TENDONACTFRC:
+  case mjSENS_JOINTLIMITFRC:
+  case mjSENS_TENDONLIMITFRC:
+  case mjSENS_FRAMELINACC:
+  case mjSENS_FRAMEANGACC:
+  case mjSENS_CONTACT:
+  case mjSENS_TACTILE:
+    return mjSTAGE_ACC;
+
+  case mjSENS_VELOCIMETER:
+  case mjSENS_GYRO:
+  case mjSENS_JOINTVEL:
+  case mjSENS_TENDONVEL:
+  case mjSENS_ACTUATORVEL:
+  case mjSENS_BALLANGVEL:
+  case mjSENS_JOINTLIMITVEL:
+  case mjSENS_TENDONLIMITVEL:
+  case mjSENS_FRAMELINVEL:
+  case mjSENS_FRAMEANGVEL:
+  case mjSENS_SUBTREELINVEL:
+  case mjSENS_SUBTREEANGMOM:
+    return mjSTAGE_VEL;
+
+  case mjSENS_MAGNETOMETER:
+  case mjSENS_RANGEFINDER:
+  case mjSENS_CAMPROJECTION:
+  case mjSENS_JOINTPOS:
+  case mjSENS_TENDONPOS:
+  case mjSENS_ACTUATORPOS:
+  case mjSENS_BALLQUAT:
+  case mjSENS_JOINTLIMITPOS:
+  case mjSENS_TENDONLIMITPOS:
+  case mjSENS_FRAMEPOS:
+  case mjSENS_FRAMEQUAT:
+  case mjSENS_FRAMEXAXIS:
+  case mjSENS_FRAMEYAXIS:
+  case mjSENS_FRAMEZAXIS:
+  case mjSENS_SUBTREECOM:
+  case mjSENS_INSIDESITE:
+  case mjSENS_GEOMDIST:
+  case mjSENS_GEOMNORMAL:
+  case mjSENS_GEOMFROMTO:
+  case mjSENS_E_POTENTIAL:
+  case mjSENS_E_KINETIC:
+  case mjSENS_CLOCK:
+  case mjSENS_PLUGIN:
+  case mjSENS_USER:
+    return mjSTAGE_POS;
+  }
+
+  return mjSTAGE_POS;  // all cases are covered but GCC is extra persnickety
+}
 
 // compiler
 void mjCSensor::Compile(void) {
@@ -6685,6 +7237,16 @@ void mjCSensor::Compile(void) {
   // Find referenced object
   ResolveReferences(model);
 
+  // set datatype for non-user sensors
+  if (type != mjSENS_USER) {
+    datatype = sensorDatatype(type);
+  }
+
+  // set needstage for non-user and non-plugin sensors
+  if (type != mjSENS_USER && type != mjSENS_PLUGIN) {
+    needstage = sensorNeedstage(type);
+  }
+
   // process according to sensor type
   switch (type) {
     case mjSENS_TOUCH:
@@ -6699,27 +7261,6 @@ void mjCSensor::Compile(void) {
       // must be attached to site
       if (objtype != mjOBJ_SITE) {
         throw mjCError(this, "sensor must be attached to site");
-      }
-
-      // set dim and datatype
-      if (type == mjSENS_TOUCH || type == mjSENS_RANGEFINDER) {
-        dim = 1;
-        datatype = mjDATATYPE_POSITIVE;
-      } else if (type == mjSENS_CAMPROJECTION) {
-        dim = 2;
-        datatype = mjDATATYPE_REAL;
-      } else {
-        dim = 3;
-        datatype = mjDATATYPE_REAL;
-      }
-
-      // set stage
-      if (type == mjSENS_MAGNETOMETER || type == mjSENS_RANGEFINDER || type == mjSENS_CAMPROJECTION) {
-        needstage = mjSTAGE_POS;
-      } else if (type == mjSENS_GYRO || type == mjSENS_VELOCIMETER) {
-        needstage = mjSTAGE_VEL;
-      } else {
-        needstage = mjSTAGE_ACC;
       }
 
       // check for camera resolution for camera projection sensor
@@ -6743,17 +7284,6 @@ void mjCSensor::Compile(void) {
       if (((mjCJoint*)obj)->type != mjJNT_SLIDE && ((mjCJoint*)obj)->type != mjJNT_HINGE) {
         throw mjCError(this, "joint must be slide or hinge in sensor");
       }
-
-      // set
-      dim = 1;
-      datatype = mjDATATYPE_REAL;
-      if (type == mjSENS_JOINTPOS) {
-        needstage = mjSTAGE_POS;
-      } else if (type == mjSENS_JOINTVEL) {
-        needstage = mjSTAGE_VEL;
-      } else if (type == mjSENS_JOINTACTFRC) {
-        needstage = mjSTAGE_ACC;
-      }
       break;
 
   case mjSENS_TENDONACTFRC:
@@ -6761,11 +7291,6 @@ void mjCSensor::Compile(void) {
     if (objtype != mjOBJ_TENDON) {
       throw mjCError(this, "sensor must be attached to tendon");
     }
-
-    // set
-    dim = 1;
-    datatype = mjDATATYPE_REAL;
-    needstage = mjSTAGE_ACC;
     break;
 
     case mjSENS_TENDONPOS:
@@ -6773,15 +7298,6 @@ void mjCSensor::Compile(void) {
       // must be attached to tendon
       if (objtype != mjOBJ_TENDON) {
         throw mjCError(this, "sensor must be attached to tendon");
-      }
-
-      // set
-      dim = 1;
-      datatype = mjDATATYPE_REAL;
-      if (type == mjSENS_TENDONPOS) {
-        needstage = mjSTAGE_POS;
-      } else {
-        needstage = mjSTAGE_VEL;
       }
       break;
 
@@ -6791,17 +7307,6 @@ void mjCSensor::Compile(void) {
       // must be attached to actuator
       if (objtype != mjOBJ_ACTUATOR) {
         throw mjCError(this, "sensor must be attached to actuator");
-      }
-
-      // set
-      dim = 1;
-      datatype = mjDATATYPE_REAL;
-      if (type == mjSENS_ACTUATORPOS) {
-        needstage = mjSTAGE_POS;
-      } else if (type == mjSENS_ACTUATORVEL) {
-        needstage = mjSTAGE_VEL;
-      } else {
-        needstage = mjSTAGE_ACC;
       }
       break;
 
@@ -6815,17 +7320,6 @@ void mjCSensor::Compile(void) {
       // make sure joint is ball
       if (((mjCJoint*)obj)->type != mjJNT_BALL) {
         throw mjCError(this, "joint must be ball in sensor");
-      }
-
-      // set
-      if (type == mjSENS_BALLQUAT) {
-        dim = 4;
-        datatype = mjDATATYPE_QUATERNION;
-        needstage = mjSTAGE_POS;
-      } else {
-        dim = 3;
-        datatype = mjDATATYPE_REAL;
-        needstage = mjSTAGE_VEL;
       }
       break;
 
@@ -6841,17 +7335,6 @@ void mjCSensor::Compile(void) {
       if (!((mjCJoint*)obj)->is_limited()) {
         throw mjCError(this, "joint must be limited in sensor");
       }
-
-      // set
-      dim = 1;
-      datatype = mjDATATYPE_REAL;
-      if (type == mjSENS_JOINTLIMITPOS) {
-        needstage = mjSTAGE_POS;
-      } else if (type == mjSENS_JOINTLIMITVEL) {
-        needstage = mjSTAGE_VEL;
-      } else {
-        needstage = mjSTAGE_ACC;
-      }
       break;
 
     case mjSENS_TENDONLIMITPOS:
@@ -6865,17 +7348,6 @@ void mjCSensor::Compile(void) {
       // make sure tendon has limit
       if (!((mjCTendon*)obj)->is_limited()) {
         throw mjCError(this, "tendon must be limited in sensor");
-      }
-
-      // set
-      dim = 1;
-      datatype = mjDATATYPE_REAL;
-      if (type == mjSENS_TENDONLIMITPOS) {
-        needstage = mjSTAGE_POS;
-      } else if (type == mjSENS_TENDONLIMITVEL) {
-        needstage = mjSTAGE_VEL;
-      } else {
-        needstage = mjSTAGE_ACC;
       }
       break;
 
@@ -6893,33 +7365,6 @@ void mjCSensor::Compile(void) {
           objtype != mjOBJ_GEOM && objtype != mjOBJ_SITE && objtype != mjOBJ_CAMERA) {
         throw mjCError(this, "sensor must be attached to (x)body, geom, site or camera");
       }
-
-      // set dim
-      if (type == mjSENS_FRAMEQUAT) {
-        dim = 4;
-      } else {
-        dim = 3;
-      }
-
-      // set datatype
-      if (type == mjSENS_FRAMEQUAT) {
-        datatype = mjDATATYPE_QUATERNION;
-      } else if (type == mjSENS_FRAMEXAXIS ||
-                 type == mjSENS_FRAMEYAXIS ||
-                 type == mjSENS_FRAMEZAXIS) {
-        datatype = mjDATATYPE_AXIS;
-      } else {
-        datatype = mjDATATYPE_REAL;
-      }
-
-      // set needstage
-      if (type == mjSENS_FRAMELINACC || type == mjSENS_FRAMEANGACC) {
-        needstage = mjSTAGE_ACC;
-      } else if (type == mjSENS_FRAMELINVEL || type == mjSENS_FRAMEANGVEL) {
-        needstage = mjSTAGE_VEL;
-      } else {
-        needstage = mjSTAGE_POS;
-      }
       break;
 
     case mjSENS_SUBTREECOM:
@@ -6928,15 +7373,6 @@ void mjCSensor::Compile(void) {
       // must be attached to body
       if (objtype != mjOBJ_BODY) {
         throw mjCError(this, "sensor must be attached to body");
-      }
-
-      // set
-      dim = 3;
-      datatype = mjDATATYPE_REAL;
-      if (type == mjSENS_SUBTREECOM) {
-        needstage = mjSTAGE_POS;
-      } else {
-        needstage = mjSTAGE_VEL;
       }
       break;
 
@@ -6948,9 +7384,6 @@ void mjCSensor::Compile(void) {
       if (reftype != mjOBJ_SITE) {
         throw mjCError(this, "sensor must be associated with a site");
       }
-      dim = 1;
-      datatype = mjDATATYPE_REAL;
-      needstage = mjSTAGE_POS;
       break;
 
     case mjSENS_GEOMDIST:
@@ -6972,49 +7405,86 @@ void mjCSensor::Compile(void) {
           (reftype == mjOBJ_GEOM && static_cast<mjCGeom*>(ref)->Type() == mjGEOM_HFIELD)) {
         throw mjCError(this, "height fields are not supported in geom distance sensors");
       }
+      break;
 
-      // set
-      needstage = mjSTAGE_POS;
-      if (type == mjSENS_GEOMDIST) {
-        dim = 1;
-        datatype = mjDATATYPE_POSITIVE;
-      } else if (type == mjSENS_GEOMNORMAL) {
-        dim = 3;
-        datatype = mjDATATYPE_AXIS;
-      } else {
-        dim = 6;
-        datatype = mjDATATYPE_REAL;
+    case mjSENS_CONTACT:
+      {
+        // check first matching criterion
+        if (objtype != mjOBJ_SITE &&
+            objtype != mjOBJ_BODY &&
+            objtype != mjOBJ_XBODY &&
+            objtype != mjOBJ_GEOM &&
+            objtype != mjOBJ_UNKNOWN) {
+          throw mjCError(this, "first matching criterion: if set, must be (x)body, geom or site");
+        }
+
+        // check second matching criterion
+        if (reftype != mjOBJ_BODY &&
+            reftype != mjOBJ_XBODY &&
+            reftype != mjOBJ_GEOM &&
+            reftype != mjOBJ_UNKNOWN) {
+          throw mjCError(this, "second matching criterion: if set, must be (x)body or geom");
+        }
+
+        // check for dataspec correctness
+        int dataspec = intprm[0];
+        if (dataspec <= 0) {
+          throw mjCError(this, "data spec (intprm[0]) must be positive, got %d", nullptr, dataspec);
+        }
+        int mask = (1 << mjNCONDATA) - 1;
+        if (!(dataspec & mask)) {
+          throw mjCError(this, "data spec intprm[0]=%d must have at least one bit set of the first "
+                         "mjNCONDATA bits", nullptr, dataspec);
+        }
+        if (dataspec & ~mask) {
+          throw mjCError(this, "data spec intprm[0]=%d has bits set beyond the first "
+                         "mjNCONDATA bits", nullptr, dataspec);
+        }
+
+        // check for reduce correctness
+        int reduce = intprm[1];
+        if (reduce < 0 || reduce > 3) {
+          throw mjCError(this, "unknown reduction criterion. got %d, "
+                         "expected one of {0, 1, 2, 3}", nullptr, reduce);
+        }
+
+        // check for non-positive num
+        if (intprm[2] <= 0) {
+          throw mjCError(this, "num (intprm[2]) must be positive in sensor, got %d", nullptr, dim);
+        }
       }
       break;
 
     case mjSENS_E_POTENTIAL:
     case mjSENS_E_KINETIC:
     case mjSENS_CLOCK:
-      dim = 1;
-      needstage = mjSTAGE_POS;
-      datatype = mjDATATYPE_REAL;
       break;
 
     case mjSENS_USER:
       // check for negative dim
       if (dim < 0) {
-        throw mjCError(this, "sensor dim must be positive in sensor");
+        throw mjCError(this, "sensor dim must be non-negative in sensor");
       }
 
       // make sure dim is consistent with datatype
       if (datatype == mjDATATYPE_AXIS && dim != 3) {
-        throw mjCError(this,
-                       "datatype AXIS requires dim=3 in sensor");
+        throw mjCError(this, "datatype AXIS requires dim=3 in sensor");
       }
       if (datatype == mjDATATYPE_QUATERNION && dim != 4) {
         throw mjCError(this, "datatype QUATERNION requires dim=4 in sensor");
       }
       break;
 
-    case mjSENS_PLUGIN:
-      dim = 0; // to be filled in by the plugin later
-      datatype = mjDATATYPE_REAL; // no noise added to plugin sensors, this attribute is unused
+    case mjSENS_TACTILE:
+      if (objtype != mjOBJ_MESH) {
+        throw mjCError(this, "sensor must be associated with a mesh");
+      }
+      if (reftype != mjOBJ_GEOM) {
+        throw mjCError(this, "sensor must be associated with a geom");
+      }
+      break;
 
+    case mjSENS_PLUGIN:
       if (plugin_name.empty() && plugin_instance_name.empty()) {
         throw mjCError(this, "neither 'plugin' nor 'instance' is specified for sensor");
       }
@@ -7036,6 +7506,8 @@ void mjCSensor::Compile(void) {
     default:
       throw mjCError(this, "invalid type in sensor '%s' (id = %d)", name.c_str(), id);
   }
+
+  dim = mjs_sensorDim(this);
 
   // check cutoff for incompatible data types
   if (cutoff > 0 && (datatype == mjDATATYPE_QUATERNION ||
@@ -7451,7 +7923,8 @@ void mjCKey::Compile(const mjModel* m) {
       qpos_[i] = (double)m->qpos0[i];
     }
   } else if (qpos_.size() != m->nq) {
-    throw mjCError(this, "keyframe %d: invalid qpos size, expected length %d", nullptr, id, m->nq);
+    throw mjCError(this, "keyframe '%s': invalid qpos size, expected %d, got %d",
+                   name.c_str(), m->nq, qpos_.size());
   }
 
   // qvel: allocate or check size
@@ -7461,7 +7934,8 @@ void mjCKey::Compile(const mjModel* m) {
       qvel_[i] = 0;
     }
   } else if (qvel_.size() != m->nv) {
-    throw mjCError(this, "keyframe %d: invalid qvel size, expected length %d", nullptr, id, m->nv);
+    throw mjCError(this, "keyframe '%s': invalid qvel size, expected %d, got %d",
+                   name.c_str(), m->nv, qvel_.size());
   }
 
   // act: allocate or check size
@@ -7471,7 +7945,8 @@ void mjCKey::Compile(const mjModel* m) {
       act_[i] = 0;
     }
   } else if (act_.size() != m->na) {
-    throw mjCError(this, "keyframe %d: invalid act size, expected length %d", nullptr, id, m->na);
+    throw mjCError(this, "keyframe '%s': invalid act size, expected %d, got %d",
+                   name.c_str(), m->na, act_.size());
   }
 
   // mpos: allocate or check size

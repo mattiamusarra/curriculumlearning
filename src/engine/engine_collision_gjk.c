@@ -278,6 +278,7 @@ static void gjk(mjCCDStatus* status, mjCCDObj* obj1, mjCCDObj* obj2) {
 
     // we have a tetrahedron containing the origin so return early
     if (n == 4) {
+      x_norm = 0;
       break;
     }
   }
@@ -1723,7 +1724,7 @@ static inline void globalcoord(mjtNum res[3], const mjtNum mat[9], const mjtNum 
 
 
 
-// find up to n <= 2 common integers of two  arrays, return n
+// find up to n <= 2 common integers of two arrays, return n
 static int intersect(int res[2], const int* arr1, const int* arr2, int n, int m) {
   int count = 0;
   for (int i = 0; i < n; i++) {
@@ -1765,7 +1766,7 @@ static int meshNormals(mjtNum* res, int resind[3], int dim, mjCCDObj* obj,
     n = intersect(faceset, edgeset, m->mesh_polymap + v3_adr, n, v3_num);
     if (n == 0) return 0;
 
-    // three vertices defined an unique face
+    // three vertices on mesh define a unique face
     mjtNum* normal = m->mesh_polynormal + 3*(polyadr + faceset[0]);
     globalcoord(res, mat, NULL, normal[0], normal[1], normal[2]);
     resind[0] = faceset[0];
@@ -1779,7 +1780,7 @@ static int meshNormals(mjtNum* res, int resind[3], int dim, mjCCDObj* obj,
     int v2_adr = m->mesh_polymapadr[vertadr + v2];
     int v2_num = m->mesh_polymapnum[vertadr + v2];
 
-    // up to two faces if vertices defined an edge
+    // up to two faces as vertices on mesh define an edge
     int edgeset[2];
     int n = intersect(edgeset, m->mesh_polymap + v1_adr, m->mesh_polymap + v2_adr, v1_num, v2_num);
     if (n == 0) return 0;
@@ -1794,6 +1795,8 @@ static int meshNormals(mjtNum* res, int resind[3], int dim, mjCCDObj* obj,
   if (dim == 1) {
     int v1_adr = m->mesh_polymapadr[vertadr + v1];
     int v1_num = m->mesh_polymapnum[vertadr + v1];
+
+    // cap number of possible faces intersecting at a vertex
     if (v1_num > mjMAX_POLYVERT) v1_num = mjMAX_POLYVERT;
     for (int i = 0; i < v1_num; i++) {
       int index = m->mesh_polymap[v1_adr + i];
@@ -1833,21 +1836,26 @@ static int meshEdgeNormals(mjtNum* res, mjtNum* endverts, int dim, mjCCDObj* obj
     int v1_num = m->mesh_polymapnum[vertadr + v1i];
     if (v1_num > mjMAX_POLYVERT) v1_num = mjMAX_POLYVERT;
 
+    const int* polymap = m->mesh_polymap + v1_adr;
+    const int* polyvert = m->mesh_polyvert;
+    const int* polyvertadr = m->mesh_polyvertadr + polyadr;
+    const int* polyvertnum = m->mesh_polyvertnum + polyadr;
+    const float* vert = m->mesh_vert + 3*vertadr;
+
     // loop through all faces with vertex v1
     for (int i = 0; i < v1_num; i++) {
-      int idx = m->mesh_polymap[v1_adr + i];
-      int adr = m->mesh_polyvertadr[polyadr + idx];
-      int nvert =  m->mesh_polyvertnum[polyadr + idx];
+      int idx = polymap[i];
+      int adr = polyvertadr[idx];
+      int nvert = polyvertnum[idx];
       // find previous vertex in polygon to form edge
       for (int j = 0; j < nvert; j++) {
-        int v = m->mesh_polyvert[adr + j];
-        if (v == v1i) {
-          float* verts = m->mesh_vert + 3*vertadr;
+        if (polyvert[adr + j] == v1i) {
           int k = (j == 0) ? nvert - 1 : j - 1;
-          float* vert = verts + 3*k;
-          globalcoord(endverts + 3*i, mat, pos, vert[0], vert[1], vert[2]);
+          const float* v = vert + 3*polyvert[adr + k];
+          globalcoord(endverts + 3*i, mat, pos, v[0], v[1], v[2]);
           sub3(res + 3*i, endverts + 3*i, v1);
           mju_normalize3(res + 3*i);
+          break;
         }
       }
     }
@@ -2041,15 +2049,15 @@ static int meshFace(mjtNum* res, mjCCDObj* obj, int idx) {
   const mjtNum* pos = obj->data->geom_xpos + g;
   int polyadr = m->mesh_polyadr[m->geom_dataid[obj->geom]];
   int vertadr = m->mesh_vertadr[m->geom_dataid[obj->geom]];
+  const float* vert = m->mesh_vert + 3*vertadr;
+  const int* polyvert = m->mesh_polyvert;
 
   int adr = m->mesh_polyvertadr[polyadr + idx], j = 0;
   int nvert =  m->mesh_polyvertnum[polyadr + idx];
   if (nvert > mjMAX_POLYVERT) nvert = mjMAX_POLYVERT;
   for (int i = nvert - 1; i >= 0; i--) {
-    float* verts = m->mesh_vert + 3*vertadr;
-    int v = m->mesh_polyvert[adr + i];
-    float* vert = verts + 3*v;
-    globalcoord(res + 3*j++, mat, pos, vert[0], vert[1], vert[2]);
+    const float* v = vert + 3*polyvert[adr + i];
+    globalcoord(res + 3*j++, mat, pos, v[0], v[1], v[2]);
   }
   return nvert;
 }

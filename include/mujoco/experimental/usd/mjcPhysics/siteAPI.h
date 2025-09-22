@@ -18,6 +18,7 @@
 /// \file mjcPhysics/siteAPI.h
 
 #include <mujoco/experimental/usd/mjcPhysics/api.h>
+#include <mujoco/experimental/usd/mjcPhysics/tokens.h>
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
@@ -39,7 +40,7 @@ class SdfAssetPath;
 
 /// \class MjcPhysicsSiteAPI
 ///
-/// API describing a Mujoco site.
+/// API describing a MuJoCo site.
 ///
 class MjcPhysicsSiteAPI : public UsdAPISchemaBase {
  public:
@@ -52,13 +53,13 @@ class MjcPhysicsSiteAPI : public UsdAPISchemaBase {
   /// Equivalent to MjcPhysicsSiteAPI::Get(prim.GetStage(), prim.GetPath())
   /// for a \em valid \p prim, but will not immediately throw an error for
   /// an invalid \p prim
-  explicit MjcPhysicsSiteAPI(const UsdPrim &prim = UsdPrim())
+  explicit MjcPhysicsSiteAPI(const UsdPrim& prim = UsdPrim())
       : UsdAPISchemaBase(prim) {}
 
   /// Construct a MjcPhysicsSiteAPI on the prim held by \p schemaObj .
   /// Should be preferred over MjcPhysicsSiteAPI(schemaObj.GetPrim()),
   /// as it preserves SchemaBase state.
-  explicit MjcPhysicsSiteAPI(const UsdSchemaBase &schemaObj)
+  explicit MjcPhysicsSiteAPI(const UsdSchemaBase& schemaObj)
       : UsdAPISchemaBase(schemaObj) {}
 
   /// Destructor.
@@ -69,7 +70,7 @@ class MjcPhysicsSiteAPI : public UsdAPISchemaBase {
   /// class and all its ancestor classes.  Does not include attributes that
   /// may be authored by custom/extended methods of the schemas involved.
   MJCPHYSICS_API
-  static const TfTokenVector &GetSchemaAttributeNames(
+  static const TfTokenVector& GetSchemaAttributeNames(
       bool includeInherited = true);
 
   /// Return a MjcPhysicsSiteAPI holding the prim adhering to this
@@ -82,7 +83,7 @@ class MjcPhysicsSiteAPI : public UsdAPISchemaBase {
   /// \endcode
   ///
   MJCPHYSICS_API
-  static MjcPhysicsSiteAPI Get(const UsdStagePtr &stage, const SdfPath &path);
+  static MjcPhysicsSiteAPI Get(const UsdStagePtr& stage, const SdfPath& path);
 
   /// Returns true if this <b>single-apply</b> API schema can be applied to
   /// the given \p prim. If this schema can not be a applied to the prim,
@@ -101,7 +102,7 @@ class MjcPhysicsSiteAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static bool CanApply(const UsdPrim &prim, std::string *whyNot = nullptr);
+  static bool CanApply(const UsdPrim& prim, std::string* whyNot = nullptr);
 
   /// Applies this <b>single-apply</b> API schema to the given \p prim.
   /// This information is stored by adding "MjcSiteAPI" to the
@@ -119,7 +120,7 @@ class MjcPhysicsSiteAPI : public UsdAPISchemaBase {
   /// \sa UsdPrim::RemoveAPI()
   ///
   MJCPHYSICS_API
-  static MjcPhysicsSiteAPI Apply(const UsdPrim &prim);
+  static MjcPhysicsSiteAPI Apply(const UsdPrim& prim);
 
  protected:
   /// Returns the kind of schema this class belongs to.
@@ -132,13 +133,37 @@ class MjcPhysicsSiteAPI : public UsdAPISchemaBase {
   // needs to invoke _GetStaticTfType.
   friend class UsdSchemaRegistry;
   MJCPHYSICS_API
-  static const TfType &_GetStaticTfType();
+  static const TfType& _GetStaticTfType();
 
   static bool _IsTypedSchema();
 
   // override SchemaBase virtuals.
   MJCPHYSICS_API
-  const TfType &_GetTfType() const override;
+  const TfType& _GetTfType() const override;
+
+ public:
+  // --------------------------------------------------------------------- //
+  // GROUP
+  // --------------------------------------------------------------------- //
+  /// Integer MuJoCo group to which the collider belongs.
+  ///
+  /// | ||
+  /// | -- | -- |
+  /// | Declaration | `uniform int mjc:group = 0` |
+  /// | C++ Type | int |
+  /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+  /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+  MJCPHYSICS_API
+  UsdAttribute GetGroupAttr() const;
+
+  /// See GetGroupAttr(), and also
+  /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
+  /// If specified, author \p defaultValue as the attribute's default,
+  /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
+  /// the default for \p writeSparsely is \c false.
+  MJCPHYSICS_API
+  UsdAttribute CreateGroupAttr(VtValue const& defaultValue = VtValue(),
+                               bool writeSparsely = false) const;
 
  public:
   // ===================================================================== //

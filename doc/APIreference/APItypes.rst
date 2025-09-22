@@ -91,6 +91,18 @@ Byte type used to represent boolean variables.
    typedef unsigned char mjtByte;
 
 
+.. _mjtSize:
+
+mjtSize
+^^^^^^^
+
+Size type used to represent buffer sizes.
+
+.. code-block:: C
+
+   typedef uint64_t mjtSize;
+
+
 .. _tyEnums:
 
 Enum types
@@ -316,26 +328,6 @@ MuJoCo object types. These are used, for example, in the support functions :ref:
 .. mujoco-include:: mjtObj
 
 
-.. _mjtConstraint:
-
-mjtConstraint
-~~~~~~~~~~~~~
-
-Constraint types. These values are not used in mjModel, but are used in the mjData field ``d->efc_type`` when the list
-of active constraints is constructed at each simulation time step.
-
-.. mujoco-include:: mjtConstraint
-
-.. _mjtConstraintState:
-
-mjtConstraintState
-~~~~~~~~~~~~~~~~~~
-
-These values are used by the solver internally to keep track of the constraint states.
-
-.. mujoco-include:: mjtConstraintState
-
-
 .. _mjtSensor:
 
 mjtSensor
@@ -365,6 +357,16 @@ mjtDataType
 These are the possible sensor data types, used in ``mjData.sensor_datatype``.
 
 .. mujoco-include:: mjtDataType
+
+
+.. _mjtConDataField:
+
+mjtConDataField
+~~~~~~~~~~~~~~~
+
+Types of data fields returned by contact sensors.
+
+.. mujoco-include:: mjtConDataField
 
 
 .. _mjtSameFrame:
@@ -416,6 +418,27 @@ State component elements as integer bitflags and several convenient combinations
 :ref:`mj_getState`, :ref:`mj_setState` and :ref:`mj_stateSize`.
 
 .. mujoco-include:: mjtState
+
+
+.. _mjtConstraint:
+
+mjtConstraint
+~~~~~~~~~~~~~
+
+Constraint types. These values are not used in mjModel, but are used in the mjData field ``d->efc_type`` when the list
+of active constraints is constructed at each simulation time step.
+
+.. mujoco-include:: mjtConstraint
+
+
+.. _mjtConstraintState:
+
+mjtConstraintState
+~~~~~~~~~~~~~~~~~~
+
+These values are used by the solver internally to keep track of the constraint states.
+
+.. mujoco-include:: mjtConstraintState
 
 
 .. _mjtWarning:

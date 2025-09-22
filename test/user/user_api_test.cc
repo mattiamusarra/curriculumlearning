@@ -130,7 +130,7 @@ TEST_F(MujocoTest, TreeTraversal) {
   EXPECT_EQ(site4, mjs_firstChild(body2, mjOBJ_SITE, /*recurse=*/true));
   EXPECT_EQ(site5, mjs_firstChild(body3, mjOBJ_SITE, /*recurse=*/true));
 
-  // text next, nonrecursive
+  // test next, nonrecursive
   EXPECT_EQ(site2, mjs_nextChild(body1, site1, /*recursive=*/false));
   EXPECT_EQ(site3, mjs_nextChild(body1, site2, /*recursive=*/false));
   EXPECT_EQ(nullptr, mjs_nextChild(body1, site3, /*recursive=*/false));
@@ -146,7 +146,7 @@ TEST_F(MujocoTest, TreeTraversal) {
   EXPECT_EQ(mjs_nextElement(spec, geom2), geom3);
   EXPECT_EQ(mjs_nextElement(spec, geom3), nullptr);
 
-  // text next, recursive
+  // test next, recursive
   EXPECT_EQ(b2, mjs_nextChild(world, b1, /*recursive=*/true));
   EXPECT_EQ(b3, mjs_nextChild(world, b2, /*recursive=*/true));
   EXPECT_EQ(site2, mjs_nextChild(body1, site1, /*recursive=*/true));
@@ -2631,7 +2631,7 @@ TEST_F(MujocoTest, DifferentOptionsInAttachedFrame) {
   mj_deleteModel(m_attached);
 }
 
-TEST_F(MujocoTest, CopyAttachedSpec) {
+TEST_F(MujocoTest, NotCopyAttachedSpec) {
   static constexpr char xml_parent[] = R"(
   <mujoco>
     <asset>
@@ -2675,7 +2675,7 @@ TEST_F(MujocoTest, CopyAttachedSpec) {
 
   mjSpec* child_copy = mjs_findSpec(copy, "child");
   EXPECT_THAT(child_copy, NotNull());
-  EXPECT_NE(child_copy, child);
+  EXPECT_EQ(child_copy, child);
 
   mj_deleteSpec(spec);
   mj_deleteSpec(copy);

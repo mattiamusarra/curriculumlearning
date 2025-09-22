@@ -445,7 +445,7 @@ shown in the table below. Their names are in the format ``mjKEY_XXX``. They corr
      - The maximal number of real-valued parameters used to define the impedance of each scalar constraint.
        Determines the size of all ``mjModel.XXX_solimp`` fields.
    * - ``mjNSENS``
-     - 2
+     - 3
      - The number of sensor parameters.
        Determines the size of ``mjModel.sensor_intprm``.
    * - ``mjNSOLVER``
@@ -472,7 +472,7 @@ shown in the table below. Their names are in the format ``mjKEY_XXX``. They corr
      - The maximal number of lines per 2D figure (:ref:`mjvFigure`).
        Defined in `mjvisualize.h <https://github.com/google-deepmind/mujoco/blob/main/include/mujoco/mjvisualize.h>`_.
    * - ``mjMAXLINEPNT``
-     - 1000
+     - 1001
      - The maximal number of points in each line in a 2D figure. Note that the buffer ``mjvFigure.linepnt`` has length
        ``2*mjMAXLINEPNT`` because each point has X and Y coordinates.
        Defined in `mjvisualize.h <https://github.com/google-deepmind/mujoco/blob/main/include/mujoco/mjvisualize.h>`_.
@@ -521,7 +521,7 @@ shown in the table below. Their names are in the format ``mjKEY_XXX``. They corr
      - Maximum number of UI rectangles.
        Defined in `mjui.h <https://github.com/google-deepmind/mujoco/blob/main/include/mujoco/mjui.h>`_.
    * - ``mjVERSION_HEADER``
-     - 334
+     - 337
      - The version of the MuJoCo headers; changes with every release. This is an integer equal to 100x the software
        version, so 210 corresponds to version 2.1. Defined in  mujoco.h. The API function :ref:`mj_version` returns a
        number with the same meaning but for the compiled library.

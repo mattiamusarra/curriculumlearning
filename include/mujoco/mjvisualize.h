@@ -24,7 +24,7 @@
 #define mjMAXLIGHT      100       // maximum number of lights in a scene
 #define mjMAXOVERLAY    500       // maximum number of characters in overlay text
 #define mjMAXLINE       100       // maximum number of lines per plot
-#define mjMAXLINEPNT    1000      // maximum number points per line
+#define mjMAXLINEPNT    1001      // maximum number points per line
 #define mjMAXPLANEGRID  200       // maximum number of grid divisions for plane
 
 
@@ -45,7 +45,8 @@ typedef enum mjtMouse_ {          // mouse interaction mode
   mjMOUSE_MOVE_V,                 // move, vertical plane
   mjMOUSE_MOVE_H,                 // move, horizontal plane
   mjMOUSE_ZOOM,                   // zoom
-  mjMOUSE_SELECT                  // selection
+  mjMOUSE_MOVE_V_REL,             // move, vertical plane, relative to target
+  mjMOUSE_MOVE_H_REL,             // move, horizontal plane, relative to target
 } mjtMouse;
 
 
@@ -130,7 +131,6 @@ typedef enum mjtVisFlag_ {        // flags enabling model element visualization
   mjVIS_FLEXFACE,                 // flex element faces
   mjVIS_FLEXSKIN,                 // flex smooth skin (disables the rest)
   mjVIS_BODYBVH,                  // body bounding volume hierarchy
-  mjVIS_FLEXBVH,                  // flex bounding volume hierarchy
   mjVIS_MESHBVH,                  // mesh bounding volume hierarchy
   mjVIS_SDFITER,                  // iterations of SDF gradient descent
 
@@ -259,6 +259,7 @@ typedef struct mjvGeom_ mjvGeom;
 //---------------------------------- mjvLight ------------------------------------------------------
 
 struct mjvLight_ {                // OpenGL light
+  int      id;                    // light id, -1 for headlight
   float    pos[3];                // position rel. to body frame
   float    dir[3];                // direction rel. to body frame
   int      type;                  // type (mjtLightType)
@@ -292,7 +293,6 @@ struct mjvOption_ {                  // abstract visualization options
   mjtByte  skingroup[mjNGROUP];      // skin visualization by group
   mjtByte  flags[mjNVISFLAG];        // visualization flags (indexed by mjtVisFlag)
   int      bvh_depth;                // depth of the bounding volume hierarchy to be visualized
-  int      oct_depth;                // depth of the octree to be visualized
   int      flex_layer;               // element layer to be visualized for 3D flex
 };
 typedef struct mjvOption_ mjvOption;

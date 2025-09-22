@@ -15,17 +15,16 @@
 #include "engine/engine_core_smooth.h"
 
 #include <stddef.h>
-#include <string.h>
 
 #include <mujoco/mjdata.h>
 #include <mujoco/mjmacro.h>
 #include <mujoco/mjmodel.h>
 #include <mujoco/mjsan.h>  // IWYU pragma: keep
 #include "engine/engine_core_constraint.h"
+#include "engine/engine_core_util.h"
 #include "engine/engine_crossplatform.h"
-#include "engine/engine_io.h"
 #include "engine/engine_macro.h"
-#include "engine/engine_support.h"
+#include "engine/engine_memory.h"
 #include "engine/engine_util_blas.h"
 #include "engine/engine_util_errmem.h"
 #include "engine/engine_util_misc.h"
@@ -182,33 +181,24 @@ void mj_kinematics(const mjModel* m, mjData* d) {
 // map inertias and motion dofs to global frame centered at subtree-CoM
 void mj_comPos(const mjModel* m, mjData* d) {
   int nbody = m->nbody, njnt = m->njnt;
-  mjtNum offset[3], axis[3];
-  mj_markStack(d);
-  mjtNum* mass_subtree = mjSTACKALLOC(d, m->nbody, mjtNum);
 
-  // clear subtree
-  mju_zero(mass_subtree, m->nbody);
-  mju_zero(d->subtree_com, m->nbody*3);
+  // subtree_com: initialize with body moment
+  for (int i=0; i < nbody; i++) {
+    mju_scl3(d->subtree_com+3*i, d->xipos+3*i, m->body_mass[i]);
+  }
 
-  // backwards pass over bodies: compute subtree_com and mass_subtree
-  for (int i=nbody-1; i >= 0; i--) {
-    // add local info
-    mju_addToScl3(d->subtree_com+3*i, d->xipos+3*i, m->body_mass[i]);
-    mass_subtree[i] += m->body_mass[i];
+  // subtree_com: accumulate to parent in backward pass
+  for (int i=nbody-1; i > 0; i--) {
+    int j = m->body_parentid[i];
+    mju_addTo3(d->subtree_com+3*j, d->subtree_com+3*i);
+  }
 
-    // add to parent, except for world
-    if (i) {
-      int j = m->body_parentid[i];
-      mju_addTo3(d->subtree_com+3*j, d->subtree_com+3*i);
-      mass_subtree[j] += mass_subtree[i];
-    }
-
-    // compute local com
-    if (mass_subtree[i] < mjMINVAL) {
+  // subtree_com: normalize
+  for (int i=0; i < nbody; i++) {
+    if (m->body_subtreemass[i] < mjMINVAL) {
       mju_copy3(d->subtree_com+3*i, d->xipos+3*i);
     } else {
-      mju_scl3(d->subtree_com+3*i, d->subtree_com+3*i,
-               1.0/mjMAX(mjMINVAL, mass_subtree[i]));
+      mju_scl3(d->subtree_com+3*i, d->subtree_com+3*i, 1.0/m->body_subtreemass[i]);
     }
   }
 
@@ -217,6 +207,7 @@ void mj_comPos(const mjModel* m, mjData* d) {
 
   // map inertias to frame centered at subtree_com
   for (int i=1; i < nbody; i++) {
+    mjtNum offset[3];
     mju_sub3(offset, d->xipos+3*i, d->subtree_com+3*m->body_rootid[i]);
     mju_inertCom(d->cinert+10*i, m->body_inertia+3*i, d->ximat+9*i,
                  offset, m->body_mass[i]);
@@ -229,6 +220,7 @@ void mj_comPos(const mjModel* m, mjData* d) {
     int bi = m->jnt_bodyid[j];
 
     // compute com-anchor vector
+    mjtNum offset[3], axis[3];
     mju_sub3(offset, d->subtree_com+3*m->body_rootid[bi], d->xanchor+3*j);
 
     // create motion dof
@@ -265,8 +257,6 @@ void mj_comPos(const mjModel* m, mjData* d) {
       break;
     }
   }
-
-  mj_freeStack(d);
 }
 
 
@@ -1472,9 +1462,9 @@ void mj_transmission(const mjModel* m, mjData* d) {
 // add tendon armature to M
 void mj_tendonArmature(const mjModel* m, mjData* d) {
   int nv = m->nv, ntendon = m->ntendon, issparse = mj_isSparse(m);
-  const int* M_rownnz = d->M_rownnz;
-  const int* M_rowadr = d->M_rowadr;
-  const int* M_colind = d->M_colind;
+  const int* M_rownnz = m->M_rownnz;
+  const int* M_rowadr = m->M_rowadr;
+  const int* M_colind = m->M_colind;
 
   for (int k=0; k < ntendon; k++) {
     mjtNum armature = m->tendon_armature[k];
@@ -1555,7 +1545,7 @@ void mj_crb(const mjModel* m, mjData* d) {
     if (m->dof_simplenum[i]) {
       int n = i + m->dof_simplenum[i];
       for (; i < n; i++) {
-        d->M[d->M_rowadr[i]] = m->dof_M0[i];
+        d->M[m->M_rowadr[i]] = m->dof_M0[i];
       }
 
       // finish or else fall through with next row
@@ -1565,7 +1555,7 @@ void mj_crb(const mjModel* m, mjData* d) {
     }
 
     // init M(i,i) with armature inertia
-    int Madr_ij = d->M_rowadr[i] + d->M_rownnz[i] - 1;
+    int Madr_ij = m->M_rowadr[i] + m->M_rownnz[i] - 1;
     d->M[Madr_ij] = m->dof_armature[i];
 
     // precompute buf = crb_body_i * cdof_i
@@ -1585,7 +1575,7 @@ void mj_makeM(const mjModel* m, mjData* d) {
   TM_START;
   mj_crb(m, d);
   mj_tendonArmature(m, d);
-  mju_scatter(d->qM, d->M, d->mapM2M, m->nC);
+  mju_scatter(d->qM, d->M, m->mapM2M, m->nC);
   TM_END(mjTIMER_POS_INERTIA);
 }
 
@@ -1659,7 +1649,7 @@ void mj_factorI_legacy(const mjModel* m, mjData* d, const mjtNum* M, mjtNum* qLD
 void mj_factorM(const mjModel* m, mjData* d) {
   TM_START;
   mju_copy(d->qLD, d->M, m->nC);
-  mj_factorI(d->qLD, d->qLDiagInv, m->nv, d->M_rownnz, d->M_rowadr, d->M_colind);
+  mj_factorI(d->qLD, d->qLDiagInv, m->nv, m->M_rownnz, m->M_rowadr, m->M_colind);
   TM_ADD(mjTIMER_POS_INERTIA);
 }
 
@@ -1893,7 +1883,7 @@ void mj_solveM(const mjModel* m, mjData* d, mjtNum* x, const mjtNum* y, int n) {
     mju_copy(x, y, n*m->nv);
   }
   mj_solveLD(x, d->qLD, d->qLDiagInv, m->nv, n,
-             d->M_rownnz, d->M_rowadr, d->M_colind);
+             m->M_rownnz, m->M_rowadr, m->M_colind);
 }
 
 
@@ -1904,9 +1894,9 @@ void mj_solveM2(const mjModel* m, mjData* d, mjtNum* x, const mjtNum* y,
   int nv = m->nv;
 
   // local copies of key variables
-  const int* rownnz = d->M_rownnz;
-  const int* rowadr = d->M_rowadr;
-  const int* colind = d->M_colind;
+  const int* rownnz = m->M_rownnz;
+  const int* rowadr = m->M_rowadr;
+  const int* colind = m->M_colind;
   const int* diagnum = m->dof_simplenum;
   const mjtNum* qLD = d->qLD;
 
@@ -2125,10 +2115,11 @@ void mj_rne(const mjModel* m, mjData* d, int flg_acc, mjtNum* result) {
   mju_zero(loc_cfrc_body, 6);
 
   // backward pass over bodies: accumulate cfrc_body from children
-  for (int i=nbody-1; i > 0; i--)
+  for (int i=nbody-1; i > 0; i--) {
     if (m->body_parentid[i]) {
       mju_addTo(loc_cfrc_body+6*m->body_parentid[i], loc_cfrc_body+6*i, 6);
     }
+  }
 
   // result = cdof * cfrc_body
   for (int i=0; i < nv; i++) {
@@ -2154,7 +2145,7 @@ void mj_rnePostConstraint(const mjModel* m, mjData* d) {
 
   // cfrc_ext = perturb
   mju_zero(d->cfrc_ext, 6*nbody);
-  for (int i=1; i < nbody; i++)
+  for (int i=1; i < nbody; i++) {
     if (!mju_isZero(d->xfrc_applied+6*i, 6)) {
       // rearrange as torque:force
       mju_copy3(cfrc, d->xfrc_applied+6*i+3);
@@ -2166,51 +2157,57 @@ void mj_rnePostConstraint(const mjModel* m, mjData* d) {
       // accumulate
       mju_addTo(d->cfrc_ext+6*i, cfrc_com, 6);
     }
+  }
 
   // cfrc_ext += contacts
   int ncon = d->ncon;
-  for (int i=0; i < ncon; i++)
-    if (d->contact[i].efc_address >= 0) {
-      // get contact pointer
-      con = d->contact+i;
+  for (int i=0; i < ncon; i++) {
+    // get contact pointer
+    con = d->contact+i;
 
-      // skip contact involving flex
-      if (con->geom[0] < 0 || con->geom[1] < 0) {
-        continue;
-      }
-
-      // tmp = contact-local force:torque vector
-      mj_contactForce(m, d, i, lfrc);
-
-      // cfrc = world-oriented torque:force vector (swap in the process)
-      mju_mulMatTVec3(cfrc, con->frame, lfrc+3);
-      mju_mulMatTVec3(cfrc+3, con->frame, lfrc);
-
-      // body 1
-      int k;
-      if ((k = m->geom_bodyid[con->geom[0]])) {
-        // tmp = subtree CoM-based torque_force vector
-        mju_transformSpatial(cfrc_com, cfrc, 1, d->subtree_com+3*m->body_rootid[k], con->pos, 0);
-
-        // apply (opposite for body 1)
-        mju_subFrom(d->cfrc_ext+6*k, cfrc_com, 6);
-      }
-
-      // body 2
-      if ((k = m->geom_bodyid[con->geom[1]])) {
-        // tmp = subtree CoM-based torque_force vector
-        mju_transformSpatial(cfrc_com, cfrc, 1, d->subtree_com+3*m->body_rootid[k], con->pos, 0);
-
-        // apply
-        mju_addTo(d->cfrc_ext+6*k, cfrc_com, 6);
-      }
+    // skip excluded contacts
+    if (con->efc_address < 0) {
+      continue;
     }
+
+    // skip contact involving flex
+    if (con->geom[0] < 0 || con->geom[1] < 0) {
+      continue;
+    }
+
+    // tmp = contact-local force:torque vector
+    mj_contactForce(m, d, i, lfrc);
+
+    // cfrc = world-oriented torque:force vector (swap in the process)
+    mju_mulMatTVec3(cfrc, con->frame, lfrc+3);
+    mju_mulMatTVec3(cfrc+3, con->frame, lfrc);
+
+    // body 1
+    int k;
+    if ((k = m->geom_bodyid[con->geom[0]])) {
+      // tmp = subtree CoM-based torque_force vector
+      mju_transformSpatial(cfrc_com, cfrc, 1, d->subtree_com+3*m->body_rootid[k], con->pos, 0);
+
+      // apply (opposite for body 1)
+      mju_subFrom(d->cfrc_ext+6*k, cfrc_com, 6);
+    }
+
+    // body 2
+    if ((k = m->geom_bodyid[con->geom[1]])) {
+      // tmp = subtree CoM-based torque_force vector
+      mju_transformSpatial(cfrc_com, cfrc, 1, d->subtree_com+3*m->body_rootid[k], con->pos, 0);
+
+      // apply
+      mju_addTo(d->cfrc_ext+6*k, cfrc_com, 6);
+    }
+  }
 
   // cfrc_ext += connect, weld, flex constraints
   int i = 0, ne = d->ne;
   while (i < ne) {
-    if (d->efc_type[i] != mjCNSTR_EQUALITY)
+    if (d->efc_type[i] != mjCNSTR_EQUALITY) {
       mjERROR("row %d of efc is not an equality constraint", i);  // SHOULD NOT OCCUR
+    }
 
     int id = d->efc_id[i];
     mjtNum* eq_data = m->eq_data + mjNEQDATA*id;

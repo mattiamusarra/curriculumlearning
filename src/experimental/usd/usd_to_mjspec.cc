@@ -16,25 +16,27 @@
 #include <cstddef>
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include <mujoco/experimental/usd/mjcPhysics/actuator.h>
 #include <mujoco/experimental/usd/mjcPhysics/collisionAPI.h>
+#include <mujoco/experimental/usd/mjcPhysics/imageableAPI.h>
 #include <mujoco/experimental/usd/mjcPhysics/jointAPI.h>
 #include <mujoco/experimental/usd/mjcPhysics/keyframe.h>
+#include <mujoco/experimental/usd/mjcPhysics/materialAPI.h>
 #include <mujoco/experimental/usd/mjcPhysics/meshCollisionAPI.h>
 #include <mujoco/experimental/usd/mjcPhysics/sceneAPI.h>
 #include <mujoco/experimental/usd/mjcPhysics/siteAPI.h>
 #include <mujoco/experimental/usd/mjcPhysics/tokens.h>
-#include <mujoco/experimental/usd/mjcPhysics/transmission.h>
 #include <mujoco/experimental/usd/usd.h>
 #include <mujoco/experimental/usd/utils.h>
 #include <mujoco/mujoco.h>
 #include "experimental/usd/kinematic_tree.h"
+#include "experimental/usd/material_parsing.h"
 #include <pxr/base/gf/declare.h>
 #include <pxr/base/gf/matrix4d.h>
+#include <pxr/base/gf/rotation.h>
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/base/vt/types.h>
@@ -59,14 +61,26 @@
 #include <pxr/usd/usdPhysics/fixedJoint.h>
 #include <pxr/usd/usdPhysics/joint.h>
 #include <pxr/usd/usdPhysics/massAPI.h>
+#include <pxr/usd/usdPhysics/materialAPI.h>
 #include <pxr/usd/usdPhysics/prismaticJoint.h>
 #include <pxr/usd/usdPhysics/revoluteJoint.h>
 #include <pxr/usd/usdPhysics/rigidBodyAPI.h>
 #include <pxr/usd/usdPhysics/scene.h>
-namespace {
+#include <pxr/usd/usdShade/material.h>
+#include <pxr/usd/usdShade/materialBindingAPI.h>
+
+namespace mujoco {
+namespace usd {
 
 using pxr::MjcPhysicsTokens;
 using pxr::TfToken;
+
+struct UsdCaches {
+  pxr::UsdGeomXformCache xform_cache;
+  pxr::UsdShadeMaterialBindingAPI::BindingsCache bindings_cache;
+  pxr::UsdShadeMaterialBindingAPI::CollectionQueryCache collection_query_cache;
+  std::map<pxr::SdfPath, mjsMaterial*> parsed_materials;
+};
 
 void SetDoubleArrFromGfVec3d(double* to, const pxr::GfVec3d& from) {
   to[0] = from[0];
@@ -123,16 +137,6 @@ bool IsUniformScale(const pxr::GfVec3d& scale) {
   static const double epsilon = 1e-6;
   return fabs(scale[0] - scale[1]) < epsilon &&
          fabs(scale[1] - scale[2]) < epsilon;
-}
-
-template <typename T>
-void SetScale(T* element, const pxr::GfMatrix4d& world_transform,
-              const pxr::GfVec3d& scale) {
-  pxr::GfVec3d transform_scale =
-      pxr::GfCompMult(GetScale(world_transform), scale);
-  element->size[0] = transform_scale[0];
-  element->size[1] = transform_scale[1];
-  element->size[2] = transform_scale[2];
 }
 
 template <typename T>
@@ -193,6 +197,25 @@ bool MaybeParseGeomPrimitive(const pxr::UsdPrim& prim, T* element,
     element->size[0] = scale[0] * radius;
     element->size[1] = scale[1] * height / 2.0f;
     element->size[2] = 0;
+
+    TfToken axis;
+    capsule.GetAxisAttr().Get(&axis);
+
+    // Mujoco (and USD) capsules are aligned with Z by default.
+    // When USD axis is X or Y, we apply a rotation to align with the Z axis.
+    pxr::GfQuatd axis_rot(1.0);
+    if (axis == pxr::UsdGeomTokens->x) {
+      axis_rot = pxr::GfRotation(pxr::GfVec3d::XAxis(), pxr::GfVec3d::ZAxis())
+                     .GetQuat();
+    } else if (axis == pxr::UsdGeomTokens->y) {
+      axis_rot = pxr::GfRotation(pxr::GfVec3d::YAxis(), pxr::GfVec3d::ZAxis())
+                     .GetQuat();
+    }
+
+    pxr::GfQuatd current_rot(element->quat[0], element->quat[1],
+                             element->quat[2], element->quat[3]);
+    pxr::GfQuatd new_rot = current_rot * axis_rot;
+    SetDoubleArrFromGfQuatd(element->quat, new_rot);
   } else if (prim.IsA<pxr::UsdGeomCube>()) {
     element->type = mjGEOM_BOX;
     auto cube = pxr::UsdGeomCube(prim);
@@ -202,14 +225,162 @@ bool MaybeParseGeomPrimitive(const pxr::UsdPrim& prim, T* element,
       return false;
     }
     // MuJoCo uses half-length for box size.
-    SetScale(element, xform_cache.GetLocalToWorldTransform(prim),
-             pxr::GfVec3d(size / 2));
+    size = size / 2;
+    element->size[0] = scale[0] * size;
+    element->size[1] = scale[1] * size;
+    element->size[2] = scale[2] * size;
+  } else if (prim.IsA<pxr::UsdGeomPlane>()) {
+    element->type = mjGEOM_PLANE;
 
+    pxr::UsdGeomPlane plane(prim);
+    TfToken axis;
+    if (!plane.GetAxisAttr().Get(&axis)) {
+      mju_error("Could not get plane axis attr.");
+      return false;
+    }
+    if (axis != pxr::UsdGeomTokens->z) {
+      mju_error("Only z-axis planes are supported.");
+      return false;
+    }
+
+    double length;
+    if (!plane.GetLengthAttr().Get(&length)) {
+      mju_error("Could not get plane length attr.");
+      return false;
+    }
+    double width;
+    if (!plane.GetWidthAttr().Get(&width)) {
+      mju_error("Could not get plane width attr.");
+      return false;
+    }
+    // MuJoCo uses half-length for plane size.
+    width = width / 2;
+    length = length / 2;
+    // Plane geoms in mjc are always infinite. Scale is used for visualization.
+    element->size[0] = scale[0] * width;
+    element->size[1] = scale[1] * length;
+    element->size[2] = scale[2];
   } else {
     return false;
   }
 
   return true;
+}
+
+mjsMesh* ParseUsdMesh(mjSpec* spec, const pxr::UsdPrim& prim, mjsGeom* geom,
+                      pxr::UsdGeomXformCache& xform_cache) {
+  if (!prim.IsA<pxr::UsdGeomMesh>()) {
+    return nullptr;
+  }
+  mjsMesh* mesh = mjs_addMesh(spec, nullptr);
+
+  geom->type = mjGEOM_MESH;
+  pxr::UsdGeomMesh usd_mesh(prim);
+  std::vector<float> uservert;
+  std::vector<int> userface;
+
+  pxr::VtVec3fArray points;
+  usd_mesh.GetPointsAttr().Get(&points);
+
+  pxr::VtVec2fArray uvs;
+  pxr::VtIntArray uv_indices;
+  std::vector<float> texcoord;
+  std::vector<int> userfacetexcoord;
+
+  pxr::UsdGeomPrimvarsAPI primvarsAPI(prim);
+  pxr::UsdGeomPrimvar st_primvar =
+      primvarsAPI.FindPrimvarWithInheritance(pxr::TfToken("st"));
+
+  uservert.reserve(points.size() * 3);
+  for (const auto& pt : points) {
+    uservert.push_back(pt[0]);
+    uservert.push_back(pt[1]);
+    uservert.push_back(pt[2]);
+  }
+
+  bool has_uvs = st_primvar.HasAuthoredValue();
+  bool face_varying_uvs = has_uvs && st_primvar.GetInterpolation() ==
+                                         pxr::UsdGeomTokens->faceVarying;
+  bool st_indexed = st_primvar.IsIndexed();
+  if (has_uvs) {
+    pxr::VtVec2fArray uvs;
+    st_primvar.Get(&uvs);
+
+    if (st_indexed) {
+      st_primvar.GetIndices(&uv_indices);
+    }
+
+    // If the UVs do not vary per point per face, then we need to compute the
+    // effective uv array taking indexing into account as we do not support UV
+    // indexing in mujoco.
+    if (!face_varying_uvs && st_primvar.IsIndexed()) {
+      texcoord.reserve(uv_indices.size() * 2);
+      for (const auto& idx : uv_indices) {
+        auto uv = uvs[idx];
+        texcoord.push_back(uv[0]);
+        // USD origin is bottom left, MuJoCo is top left.
+        texcoord.push_back(1.0f - uv[1]);
+      }
+    } else {
+      texcoord.reserve(uvs.size() * 2);
+      for (const auto& uv : uvs) {
+        texcoord.push_back(uv[0]);
+        // USD origin is bottom left, MuJoCo is top left.
+        texcoord.push_back(1.0f - uv[1]);
+      }
+    }
+    mjs_setFloat(mesh->usertexcoord, texcoord.data(), texcoord.size());
+  }
+
+  pxr::VtIntArray indices;
+  usd_mesh.GetFaceVertexIndicesAttr().Get(&indices);
+  pxr::VtIntArray counts;
+  usd_mesh.GetFaceVertexCountsAttr().Get(&counts);
+
+  userface.reserve(indices.size());
+  int vtx_idx = 0;
+  for (int count : counts) {
+    int k = 1;
+    // If the prim is a triangle create a triangle fan rooted
+    // at the first index.
+    while (k < count - 1) {
+      userface.push_back(indices[vtx_idx]);
+      userface.push_back(indices[vtx_idx + k]);
+      userface.push_back(indices[vtx_idx + k + 1]);
+
+      // If the UVs vary per face, then we need to compute the effective
+      // index array after we've created the triangle fan for non triangular
+      // faces.
+      if (face_varying_uvs) {
+        userfacetexcoord.push_back(st_indexed ? uv_indices[vtx_idx] : vtx_idx);
+        userfacetexcoord.push_back(st_indexed ? uv_indices[vtx_idx + k]
+                                              : vtx_idx + k);
+        userfacetexcoord.push_back(st_indexed ? uv_indices[vtx_idx + k + 1]
+                                              : vtx_idx + k + 1);
+      }
+      k++;
+    }
+    vtx_idx += count;
+  }
+
+  auto world_xform = xform_cache.GetLocalToWorldTransform(prim);
+  auto scale = GetScale(world_xform);
+  mesh->scale[0] = scale[0];
+  mesh->scale[1] = scale[1];
+  mesh->scale[2] = scale[2];
+
+  std::string mesh_name = usd_mesh.GetPath().GetAsString();
+  mjs_setName(mesh->element, mesh_name.c_str());
+  mjs_setFloat(mesh->uservert, uservert.data(), uservert.size());
+  mjs_setInt(mesh->userface, userface.data(), userface.size());
+
+  if (face_varying_uvs) {
+    mjs_setInt(mesh->userfacetexcoord, userfacetexcoord.data(),
+               userfacetexcoord.size());
+  }
+
+  mjs_setString(geom->meshname, mesh_name.c_str());
+  return mesh;
 }
 
 void ParseUsdPhysicsScene(mjSpec* spec,
@@ -398,9 +569,13 @@ void ParseUsdPhysicsScene(mjSpec* spec,
   mjc_physics_scene.GetContactFlagAttr().Get(&contact_flag);
   spec->option.disableflags |= (!contact_flag ? mjDSBL_CONTACT : 0);
 
-  bool passive_flag;
-  mjc_physics_scene.GetPassiveFlagAttr().Get(&passive_flag);
-  spec->option.disableflags |= (!passive_flag ? mjDSBL_PASSIVE : 0);
+  bool spring_flag;
+  mjc_physics_scene.GetSpringFlagAttr().Get(&spring_flag);
+  spec->option.disableflags |= (!spring_flag ? mjDSBL_SPRING : 0);
+
+  bool damper_flag;
+  mjc_physics_scene.GetDamperFlagAttr().Get(&damper_flag);
+  spec->option.disableflags |= (!damper_flag ? mjDSBL_DAMPER : 0);
 
   bool gravity_flag;
   mjc_physics_scene.GetGravityFlagAttr().Get(&gravity_flag);
@@ -446,6 +621,10 @@ void ParseUsdPhysicsScene(mjSpec* spec,
   mjc_physics_scene.GetAutoResetFlagAttr().Get(&autoreset_flag);
   spec->option.disableflags |= (!autoreset_flag ? mjDSBL_AUTORESET : 0);
 
+  bool island_flag;
+  mjc_physics_scene.GetIslandFlagAttr().Get(&island_flag);
+  spec->option.disableflags |= (!island_flag ? mjDSBL_ISLAND : 0);
+
   bool override_flag;
   mjc_physics_scene.GetOverrideFlagAttr().Get(&override_flag);
   spec->option.enableflags |= (override_flag ? mjENBL_OVERRIDE : 0);
@@ -466,9 +645,101 @@ void ParseUsdPhysicsScene(mjSpec* spec,
   mjc_physics_scene.GetMultiCCDFlagAttr().Get(&multiccd_flag);
   spec->option.enableflags |= (multiccd_flag ? mjENBL_MULTICCD : 0);
 
-  bool island_flag;
-  mjc_physics_scene.GetIslandFlagAttr().Get(&island_flag);
-  spec->option.enableflags |= (island_flag ? mjENBL_ISLAND : 0);
+  // Compiler attributes
+  auto auto_limits_attr = mjc_physics_scene.GetAutoLimitsAttr();
+  if (auto_limits_attr.HasAuthoredValue()) {
+    bool autolimits;
+    auto_limits_attr.Get(&autolimits);
+    spec->compiler.autolimits = autolimits;
+  }
+
+  auto use_thread_attr = mjc_physics_scene.GetUseThreadAttr();
+  if (use_thread_attr.HasAuthoredValue()) {
+    bool use_thread;
+    use_thread_attr.Get(&use_thread);
+    spec->compiler.usethread = use_thread;
+  }
+
+  auto balance_inertia_attr = mjc_physics_scene.GetBalanceInertiaAttr();
+  if (balance_inertia_attr.HasAuthoredValue()) {
+    bool balanceinertia;
+    balance_inertia_attr.Get(&balanceinertia);
+    spec->compiler.balanceinertia = balanceinertia;
+  }
+
+  auto angle_attr = mjc_physics_scene.GetAngleAttr();
+  if (angle_attr.HasAuthoredValue()) {
+    pxr::TfToken angle;
+    angle_attr.Get(&angle);
+    spec->compiler.degree = angle == MjcPhysicsTokens->degree;
+  }
+
+  auto fit_aabb_attr = mjc_physics_scene.GetFitAABBAttr();
+  if (fit_aabb_attr.HasAuthoredValue()) {
+    bool fitaabb;
+    fit_aabb_attr.Get(&fitaabb);
+    spec->compiler.fitaabb = fitaabb;
+  }
+
+  auto fuse_static_attr = mjc_physics_scene.GetFuseStaticAttr();
+  if (fuse_static_attr.HasAuthoredValue()) {
+    bool fusestatic;
+    fuse_static_attr.Get(&fusestatic);
+    spec->compiler.fusestatic = fusestatic;
+  }
+
+  auto inertia_from_geom_attr = mjc_physics_scene.GetInertiaFromGeomAttr();
+  if (inertia_from_geom_attr.HasAuthoredValue()) {
+    pxr::TfToken inertiafromgeom;
+    inertia_from_geom_attr.Get(&inertiafromgeom);
+    if (inertiafromgeom == MjcPhysicsTokens->auto_) {
+      spec->compiler.inertiafromgeom = mjINERTIAFROMGEOM_AUTO;
+    } else if (inertiafromgeom == MjcPhysicsTokens->false_) {
+      spec->compiler.inertiafromgeom = mjINERTIAFROMGEOM_FALSE;
+    } else if (inertiafromgeom == MjcPhysicsTokens->true_) {
+      spec->compiler.inertiafromgeom = mjINERTIAFROMGEOM_TRUE;
+    } else {
+      mju_warning("Invalid inertiafromgeom token: %s",
+                  inertiafromgeom.GetText());
+    }
+  }
+
+  auto align_free_attr = mjc_physics_scene.GetAlignFreeAttr();
+  if (align_free_attr.HasAuthoredValue()) {
+    bool alignfree;
+    align_free_attr.Get(&alignfree);
+    spec->compiler.alignfree = alignfree;
+  }
+
+  auto inertia_group_range_min_attr =
+      mjc_physics_scene.GetInertiaGroupRangeMinAttr();
+  auto inertia_group_range_max_attr =
+      mjc_physics_scene.GetInertiaGroupRangeMaxAttr();
+  if (inertia_group_range_min_attr.HasAuthoredValue() &&
+      inertia_group_range_max_attr.HasAuthoredValue()) {
+    int inertiagrouprangemin;
+    inertia_group_range_min_attr.Get(&inertiagrouprangemin);
+    int inertiagrouprangemax;
+    inertia_group_range_max_attr.Get(&inertiagrouprangemax);
+    spec->compiler.inertiagrouprange[0] = inertiagrouprangemin;
+    spec->compiler.inertiagrouprange[1] = inertiagrouprangemax;
+  } else if (inertia_group_range_min_attr.HasAuthoredValue() ||
+             inertia_group_range_max_attr.HasAuthoredValue()) {
+    mju_warning(
+        "Only one of inertiaGroupRangeMin and inertiaGroupRangeMax was "
+        "authored, ignoring both.");
+  }
+
+  auto save_inertial_attr = mjc_physics_scene.GetSaveInertialAttr();
+  if (save_inertial_attr.HasAuthoredValue()) {
+    bool saveinertial;
+    save_inertial_attr.Get(&saveinertial);
+    spec->compiler.saveinertial = saveinertial;
+  }
+
+  mjc_physics_scene.GetBoundMassAttr().Get(&spec->compiler.boundmass);
+  mjc_physics_scene.GetBoundInertiaAttr().Get(&spec->compiler.boundinertia);
+  mjc_physics_scene.GetSetTotalMassAttr().Get(&spec->compiler.settotalmass);
 }
 
 void ParseUsdPhysicsMassAPIForBody(mjsBody* body,
@@ -528,6 +799,68 @@ void ParseMjcPhysicsCollisionAPI(
     geom->typeinertia = shell_inertia ? mjtGeomInertia::mjINERTIA_SHELL
                                       : mjtGeomInertia::mjINERTIA_VOLUME;
   }
+
+  auto group_attr = collision_api.GetGroupAttr();
+  if (group_attr.HasAuthoredValue()) {
+    group_attr.Get(&geom->group);
+  }
+
+  auto priority_attr = collision_api.GetPriorityAttr();
+  if (priority_attr.HasAuthoredValue()) {
+    priority_attr.Get(&geom->priority);
+  }
+
+  auto condim_attr = collision_api.GetConDimAttr();
+  if (condim_attr.HasAuthoredValue()) {
+    condim_attr.Get(&geom->condim);
+  }
+
+  auto solmix_attr = collision_api.GetSolMixAttr();
+  if (solmix_attr.HasAuthoredValue()) {
+    solmix_attr.Get(&geom->solmix);
+  }
+
+  auto solref_attr = collision_api.GetSolRefAttr();
+  if (solref_attr.HasAuthoredValue()) {
+    pxr::VtDoubleArray solref;
+    solref_attr.Get(&solref);
+    if (solref.size() == mjNREF) {
+      for (int i = 0; i < mjNREF; ++i) {
+        geom->solref[i] = solref[i];
+      }
+    } else {
+      mju_warning(
+          "solref attribute for geom %s has incorrect size %zu, "
+          "expected %d.",
+          mjs_getName(geom->element)->c_str(), solref.size(), mjNREF);
+    }
+  }
+
+  auto solimp_attr = collision_api.GetSolImpAttr();
+  if (solimp_attr.HasAuthoredValue()) {
+    pxr::VtDoubleArray solimp;
+    solimp_attr.Get(&solimp);
+    if (solimp.size() == mjNIMP) {
+      for (int i = 0; i < mjNIMP; ++i) {
+        geom->solimp[i] = solimp[i];
+      }
+    } else {
+      mju_warning(
+          "solimp attribute for geom %s has incorrect size %zu, "
+          "expected %d.",
+          mjs_getName(geom->element)->c_str(), solimp.size(), mjNIMP);
+    }
+  }
+
+  auto margin_attr = collision_api.GetMarginAttr();
+  if (margin_attr.HasAuthoredValue()) {
+    margin_attr.Get(&geom->margin);
+  }
+
+  auto gap_attr = collision_api.GetGapAttr();
+  if (gap_attr.HasAuthoredValue()) {
+    gap_attr.Get(&geom->gap);
+  }
 }
 
 void ParseMjcPhysicsMeshCollisionAPI(
@@ -553,8 +886,8 @@ void ParseMjcPhysicsMeshCollisionAPI(
   }
 }
 
-void ParseMjcPhysicsTransmission(mjSpec* spec,
-                                 const pxr::MjcPhysicsTransmission& tran) {
+void ParseMjcPhysicsActuator(mjSpec* spec,
+                             const pxr::MjcPhysicsActuator& tran) {
   pxr::UsdPrim prim = tran.GetPrim();
   mjsActuator* mj_act = mjs_addActuator(spec, nullptr);
   mjs_setName(mj_act->element, prim.GetPath().GetAsString().c_str());
@@ -567,12 +900,12 @@ void ParseMjcPhysicsTransmission(mjSpec* spec,
   pxr::SdfPathVector targets;
   tran.GetMjcTargetRel().GetTargets(&targets);
   if (targets.empty()) {
-    mju_warning("Transmission %s has no target, skipping.",
+    mju_warning("Actuator %s has no target, skipping.",
                 prim.GetPath().GetAsString().c_str());
     return;
   }
   if (targets.size() > 1) {
-    mju_warning("Transmission has more than one target, using the first.");
+    mju_warning("Actuator has more than one target, using the first.");
   }
   mjs_setString(mj_act->target, targets[0].GetAsString().c_str());
 
@@ -585,7 +918,7 @@ void ParseMjcPhysicsTransmission(mjSpec* spec,
   } else if (target_prim.HasAPI<pxr::MjcPhysicsSiteAPI>()) {
     mj_act->trntype = slider_crank ? mjTRN_SLIDERCRANK : mjTRN_SITE;
   } else {
-    mju_warning("Transmission %s has an invalid target type, skipping.",
+    mju_warning("Actuator %s has an invalid target type, skipping.",
                 prim.GetPath().GetAsString().c_str());
     return;
   }
@@ -740,6 +1073,11 @@ void ParseMjcPhysicsTransmission(mjSpec* spec,
     mj_act->actearly = (int)act_early;
   }
 
+  auto inherit_range_attr = tran.GetMjcInheritRangeAttr();
+  if (inherit_range_attr.HasAuthoredValue()) {
+    inherit_range_attr.Get(&mj_act->inheritrange);
+  }
+
   auto ref_site_rel = tran.GetMjcRefSiteRel();
   if (ref_site_rel.HasAuthoredTargets()) {
     pxr::SdfPathVector targets;
@@ -751,6 +1089,11 @@ void ParseMjcPhysicsTransmission(mjSpec* spec,
 
 void ParseMjcPhysicsJointAPI(mjsJoint* mj_joint,
                              const pxr::MjcPhysicsJointAPI& joint_api) {
+  auto group_attr = joint_api.GetGroupAttr();
+  if (group_attr.HasAuthoredValue()) {
+    group_attr.Get(&mj_joint->group);
+  }
+
   auto springdamper_attr = joint_api.GetMjcSpringdamperAttr();
   if (springdamper_attr.HasAuthoredValue()) {
     pxr::VtDoubleArray springdamper;
@@ -915,33 +1258,48 @@ void ParseMjcPhysicsJointAPI(mjsJoint* mj_joint,
   }
 }
 
-void ParseUsdPhysicsCollider(mjSpec* spec,
-                             const pxr::UsdPhysicsCollisionAPI& collision_api,
-                             const pxr::UsdPrim& body_prim, mjsBody* parent,
-                             pxr::UsdGeomXformCache& xform_cache) {
-  pxr::UsdPrim prim = collision_api.GetPrim();
-  // UsdPhysicsCollisionAPI can only be applied to gprim primitives.
-  if (!prim.IsA<pxr::UsdGeomGprim>()) {
+void ParseUsdPhysicsMaterialAPI(
+    mjsGeom* geom, const pxr::UsdPhysicsMaterialAPI& material_api) {
+  auto dynamic_friction_attr = material_api.GetDynamicFrictionAttr();
+  if (dynamic_friction_attr.HasAuthoredValue()) {
+    float dynamic_friction;
+    dynamic_friction_attr.Get(&dynamic_friction);
+    geom->friction[0] = dynamic_friction;
+  }
+
+  auto restitution_attr = material_api.GetRestitutionAttr();
+  if (restitution_attr.HasAuthoredValue()) {
     mju_warning(
-        "UsdPhysicsCollisionAPI applied to a non-UsdGeomGprim prim: %s. "
-        "Skipping.",
-        prim.GetPath().GetAsString().c_str());
-    return;
+        "Material %s is trying to set the resitution coefficient, to control "
+        "restitution in MuJoCo use the direct method of setting solref to "
+        "(-stiffness, -damping). See "
+        "https://mujoco.readthedocs.io/en/latest/modeling.html#restitution for "
+        "examples.",
+        material_api.GetPath().GetString().c_str());
   }
 
-  mjsGeom* geom = mjs_addGeom(parent, nullptr);
-  mjs_setName(geom->element, prim.GetPath().GetAsString().c_str());
-  geom->contype = 1;
-  geom->conaffinity = 1;
+  auto density_attr = material_api.GetDensityAttr();
+  if (density_attr.HasAuthoredValue()) {
+    float density;
+    density_attr.Get(&density);
+    geom->density = density;
+  }
+}
 
-  if (prim.HasAPI<pxr::UsdPhysicsMassAPI>()) {
-    ParseUsdPhysicsMassAPIForGeom(geom, pxr::UsdPhysicsMassAPI(prim));
+void ParseMjcPhysicsMaterialAPI(
+    mjsGeom* geom, const pxr::MjcPhysicsMaterialAPI& material_api) {
+  auto torsional_friction_attr = material_api.GetTorsionalFrictionAttr();
+  if (torsional_friction_attr.HasAuthoredValue()) {
+    torsional_friction_attr.Get(&geom->friction[1]);
   }
 
-  if (prim.HasAPI<pxr::MjcPhysicsCollisionAPI>()) {
-    ParseMjcPhysicsCollisionAPI(geom, pxr::MjcPhysicsCollisionAPI(prim));
+  auto rolling_friction_attr = material_api.GetRollingFrictionAttr();
+  if (rolling_friction_attr.HasAuthoredValue()) {
+    rolling_friction_attr.Get(&geom->friction[2]);
   }
+}
 
+void ParseDisplayColorAndOpacity(const pxr::UsdPrim& prim, mjsGeom* geom) {
   // Convert displayColor and displayOpacity to rgba.
   // We want to support primvar inheritance, hence FindPrimvarWithInheritance.
   pxr::UsdGeomPrimvarsAPI primvarsAPI(prim);
@@ -967,90 +1325,101 @@ void ParseUsdPhysicsCollider(mjSpec* spec,
       geom->rgba[3] = display_opacity[0];
     }
   }
+}
 
-  SetLocalPoseFromPrim(prim, body_prim, geom, xform_cache);
+void ParseUsdGeomGprim(mjSpec* spec, const pxr::UsdPrim& gprim,
+                       const pxr::UsdPrim& body_prim, mjsBody* parent,
+                       UsdCaches& caches) {
+  mjsGeom* geom = mjs_addGeom(parent, nullptr);
+  mjs_setName(geom->element, gprim.GetPath().GetAsString().c_str());
+  geom->contype = 0;
+  geom->conaffinity = 0;
 
-  if (!MaybeParseGeomPrimitive(prim, geom, xform_cache)) {
-    if (prim.IsA<pxr::UsdGeomMesh>()) {
-      geom->type = mjGEOM_MESH;
-      pxr::UsdGeomMesh usd_mesh(prim);
-      std::vector<float> uservert;
-      std::vector<int> userface;
+  ParseDisplayColorAndOpacity(gprim, geom);
+  SetLocalPoseFromPrim(gprim, body_prim, geom, caches.xform_cache);
+  if (!MaybeParseGeomPrimitive(gprim, geom, caches.xform_cache)) {
+    ParseUsdMesh(spec, gprim, geom, caches.xform_cache);
+  }
 
-      pxr::VtVec3fArray points;
-      usd_mesh.GetPointsAttr().Get(&points);
+  pxr::UsdShadeMaterial bound_material =
+      pxr::UsdShadeMaterialBindingAPI(gprim).ComputeBoundMaterial(
+          &caches.bindings_cache, &caches.collection_query_cache);
+  if (bound_material) {
+    pxr::SdfPath material_path = bound_material.GetPrim().GetPath();
+    mjsMaterial* material = nullptr;
+    if (caches.parsed_materials.find(material_path) !=
+        caches.parsed_materials.end()) {
+      material = caches.parsed_materials[material_path];
+    } else {
+      material = ParseMaterial(spec, bound_material);
+      caches.parsed_materials[material_path] = material;
+    }
+    mjs_setString(geom->material, mjs_getName(material->element)->c_str());
+  }
 
-      uservert.reserve(points.size() * 3);
-      for (const auto& pt : points) {
-        uservert.push_back(pt[0]);
-        uservert.push_back(pt[1]);
-        uservert.push_back(pt[2]);
-      }
+  if (gprim.HasAPI<pxr::MjcPhysicsImageableAPI>()) {
+    auto imageable_api = pxr::MjcPhysicsImageableAPI(gprim);
+    auto group_attr = imageable_api.GetGroupAttr();
+    if (group_attr.HasAuthoredValue()) {
+      group_attr.Get(&geom->group);
+    }
+  }
+}
 
-      pxr::VtIntArray indices;
-      usd_mesh.GetFaceVertexIndicesAttr().Get(&indices);
-      pxr::VtIntArray counts;
-      usd_mesh.GetFaceVertexCountsAttr().Get(&counts);
+void ParseUsdPhysicsCollider(mjSpec* spec,
+                             const pxr::UsdPhysicsCollisionAPI& collision_api,
+                             const pxr::UsdPrim& body_prim, mjsBody* parent,
+                             UsdCaches& caches) {
+  pxr::UsdPrim prim = collision_api.GetPrim();
+  // UsdPhysicsCollisionAPI can only be applied to gprim primitives.
+  if (!prim.IsA<pxr::UsdGeomGprim>()) {
+    mju_warning(
+        "UsdPhysicsCollisionAPI applied to a non-UsdGeomGprim prim: %s. "
+        "Skipping.",
+        prim.GetPath().GetAsString().c_str());
+    return;
+  }
 
-      userface.reserve(indices.size());
-      int vtx_idx = 0;
-      for (int count : counts) {
-        int k = 1;
-        // If the prim is a triangle create a triangle fan rooted
-        // at the first index.
-        while (k < count - 1) {
-          userface.push_back(indices[vtx_idx]);
-          userface.push_back(indices[vtx_idx + k]);
-          userface.push_back(indices[vtx_idx + k + 1]);
-          k++;
-        }
-        vtx_idx += count;
-      }
+  mjsGeom* geom = mjs_addGeom(parent, nullptr);
+  mjs_setName(geom->element, prim.GetPath().GetAsString().c_str());
+  geom->contype = 1;
+  geom->conaffinity = 1;
 
-      mjsMesh* mesh = mjs_addMesh(spec, nullptr);
+  if (prim.HasAPI<pxr::MjcPhysicsCollisionAPI>()) {
+    ParseMjcPhysicsCollisionAPI(geom, pxr::MjcPhysicsCollisionAPI(prim));
+  }
 
-      if (prim.HasAPI<pxr::MjcPhysicsMeshCollisionAPI>()) {
-        ParseMjcPhysicsMeshCollisionAPI(mesh,
-                                        pxr::MjcPhysicsMeshCollisionAPI(prim));
-      }
+  pxr::UsdShadeMaterial bound_material =
+      pxr::UsdShadeMaterialBindingAPI(prim).ComputeBoundMaterial(
+          &caches.bindings_cache, &caches.collection_query_cache);
+  if (bound_material) {
+    pxr::UsdPrim bound_material_prim = bound_material.GetPrim();
+    if (bound_material_prim.HasAPI<pxr::UsdPhysicsMaterialAPI>() ||
+        bound_material_prim.HasAPI<pxr::MjcPhysicsMaterialAPI>()) {
+      ParseUsdPhysicsMaterialAPI(
+          geom, pxr::UsdPhysicsMaterialAPI(bound_material_prim));
+      ParseMjcPhysicsMaterialAPI(
+          geom, pxr::MjcPhysicsMaterialAPI(bound_material_prim));
+    }
+  }
 
-      std::string mesh_name = usd_mesh.GetPath().GetAsString();
-      mjs_setName(mesh->element, mesh_name.c_str());
-      mjs_setFloat(mesh->uservert, uservert.data(), uservert.size());
-      mjs_setInt(mesh->userface, userface.data(), userface.size());
+  // Parse the Mass API after the physics material APIs since the density
+  // attribute from the Mass API is supposed to override the Material API
+  // density attribute. See
+  // https://openusd.org/dev/api/usd_physics_page_front.html
+  if (prim.HasAPI<pxr::UsdPhysicsMassAPI>()) {
+    ParseUsdPhysicsMassAPIForGeom(geom, pxr::UsdPhysicsMassAPI(prim));
+  }
 
-      mjs_setString(geom->meshname, mesh_name.c_str());
-    } else if (prim.IsA<pxr::UsdGeomPlane>()) {
-      geom->type = mjGEOM_PLANE;
+  ParseDisplayColorAndOpacity(prim, geom);
 
-      pxr::UsdGeomPlane plane(prim);
-      TfToken axis;
-      if (!plane.GetAxisAttr().Get(&axis)) {
-        mju_error("Could not get plane axis attr.");
-        return;
-      }
-      if (axis != pxr::UsdGeomTokens->z) {
-        mju_error("Only z-axis planes are supported.");
-        return;
-      }
+  SetLocalPoseFromPrim(prim, body_prim, geom, caches.xform_cache);
 
-      // This block of code distributes the plane length and width along the
-      // scale as per the specification here:
-      // https://openusd.org/dev/api/class_usd_geom_plane.html#a89fa6076111984682db77fc8a4e57496.
-      double length;
-      if (!plane.GetLengthAttr().Get(&length)) {
-        mju_error("Could not get plane length attr.");
-        return;
-      }
-      double width;
-      if (!plane.GetWidthAttr().Get(&width)) {
-        mju_error("Could not get plane width attr.");
-        return;
-      }
-      // Plane geoms in mjc are always infinite. We set the scale here just
-      // for visualization.
-      SetScale(geom, xform_cache.GetLocalToWorldTransform(prim),
-               pxr::GfVec3d(width, length, 1));
+  if (!MaybeParseGeomPrimitive(prim, geom, caches.xform_cache)) {
+    mjsMesh* mesh = ParseUsdMesh(spec, prim, geom, caches.xform_cache);
+    if (mesh != nullptr && prim.HasAPI<pxr::MjcPhysicsMeshCollisionAPI>()) {
+      ParseMjcPhysicsMeshCollisionAPI(mesh,
+                                      pxr::MjcPhysicsMeshCollisionAPI(prim));
     }
   }
 }
@@ -1103,10 +1472,13 @@ void ParseUsdPhysicsJoint(mjSpec* spec, const pxr::UsdPrim& prim, mjsBody* body,
     if (revolute.GetLowerLimitAttr().Get(&lower) &&
         revolute.GetUpperLimitAttr().Get(&upper)) {
       mj_joint->limited = mjLIMITED_TRUE;
-      // As per the XML Reference, the default unit for mjSpec is degrees, so we
-      // don't need to convert from USD (which is degrees).
-      mj_joint->range[0] = lower;
-      mj_joint->range[1] = upper;
+      if (spec->compiler.degree) {
+        mj_joint->range[0] = lower;
+        mj_joint->range[1] = upper;
+      } else {
+        mj_joint->range[0] = lower * M_PI / 180.0;
+        mj_joint->range[1] = upper * M_PI / 180.0;
+      }
     }
   } else if (prim.IsA<pxr::UsdPhysicsPrismaticJoint>()) {
     pxr::UsdPhysicsPrismaticJoint prismatic(prim);
@@ -1166,6 +1538,11 @@ void ParseMjcPhysicsSite(mjSpec* spec, const pxr::MjcPhysicsSiteAPI& site_api,
   mjs_setName(site->element,
               site_api.GetPrim().GetPath().GetAsString().c_str());
   SetLocalPoseFromPrim(site_api.GetPrim(), parent_prim, site, xform_cache);
+
+  auto group_attr = site_api.GetGroupAttr();
+  if (group_attr.HasAuthoredValue()) {
+    group_attr.Get(&site->group);
+  }
 
   // Convert USD type to MuJoCo type.
   if (!MaybeParseGeomPrimitive(prim, site, xform_cache)) {
@@ -1274,20 +1651,12 @@ using BodyPrimMap = std::map<pxr::SdfPath, std::vector<pxr::SdfPath>>;
 // Recursively traverses the kinematic tree, creating bodies, joints, and geoms
 // in the mjSpec.
 void PopulateSpecFromTree(pxr::UsdStageRefPtr stage, mjSpec* spec,
-                          mjsBody* parent_mj_body,
-                          const mujoco::usd::KinematicNode* parent_node,
-                          const mujoco::usd::KinematicNode& current_node,
-                          pxr::UsdGeomXformCache& xform_cache,
-                          const BodyPrimMap& body_to_prims) {
-  mjsBody* current_mj_body;
+                          mjsBody* parent_mj_body, const Node* parent_node,
+                          const Node* current_node, UsdCaches& caches) {
+  mjsBody* current_mj_body = nullptr;
 
-  if (current_node.body_path.IsEmpty()) {
-    // This is the world root node.
-    current_mj_body = mjs_findBody(spec, "world");
-  } else {
-    // This is a regular body.
-    pxr::UsdPrim current_body_prim =
-        stage->GetPrimAtPath(current_node.body_path);
+  if (!current_node->body_path.IsEmpty()) {
+    // This is *not* the world body.
     pxr::SdfPath parent_body_path =
         parent_node ? parent_node->body_path : pxr::SdfPath();
     pxr::UsdPrim parent_prim_for_xform =
@@ -1295,161 +1664,94 @@ void PopulateSpecFromTree(pxr::UsdStageRefPtr stage, mjSpec* spec,
                                    : stage->GetPrimAtPath(parent_body_path);
 
     current_mj_body = ParseUsdPhysicsRigidbody(
-        spec, pxr::UsdPhysicsRigidBodyAPI(current_body_prim),
-        parent_prim_for_xform, parent_mj_body, xform_cache);
-
-    if (!current_node.joint_path.IsEmpty()) {
-      pxr::UsdPrim joint_prim = stage->GetPrimAtPath(current_node.joint_path);
-      ParseUsdPhysicsJoint(spec, joint_prim, current_mj_body, xform_cache);
-    } else if (parent_mj_body == mjs_findBody(spec, "world")) {
-      // No joint to parent, and parent is world: this is a floating body.
-      mjsJoint* free_joint = mjs_addJoint(current_mj_body, nullptr);
-      free_joint->type = mjJNT_FREE;
-    }
+        spec, pxr::UsdPhysicsRigidBodyAPI::Get(stage, current_node->body_path),
+        parent_prim_for_xform, parent_mj_body, caches.xform_cache);
+  } else {
+    current_mj_body = mjs_findBody(spec, "world");
   }
 
-  // Add geoms/sites/etc. belonging to the current body.
-  auto it_prims = body_to_prims.find(current_node.body_path);
-  if (it_prims != body_to_prims.end()) {
-    pxr::UsdPrim body_prim_for_xform =
-        current_node.body_path.IsEmpty()
-            ? stage->GetPseudoRoot()
-            : stage->GetPrimAtPath(current_node.body_path);
-    for (const auto& gprim_path : it_prims->second) {
-      pxr::UsdPrim prim = stage->GetPrimAtPath(gprim_path);
-      if (prim.HasAPI<pxr::UsdPhysicsCollisionAPI>()) {
-        ParseUsdPhysicsCollider(spec, pxr::UsdPhysicsCollisionAPI(prim),
-                                body_prim_for_xform, current_mj_body,
-                                xform_cache);
-      }
-      if (prim.HasAPI<pxr::MjcPhysicsSiteAPI>()) {
-        ParseMjcPhysicsSite(spec, pxr::MjcPhysicsSiteAPI(prim),
-                            body_prim_for_xform, current_mj_body, xform_cache);
-      }
+  if (!current_node->joints.empty()) {
+    for (const auto& joint_path : current_node->joints) {
+      ParseUsdPhysicsJoint(spec, stage->GetPrimAtPath(joint_path),
+                           current_mj_body, caches.xform_cache);
     }
+  } else if (parent_mj_body == mjs_findBody(spec, "world")) {
+    // No joint to parent, and parent is world: this is a floating body.
+    mjsJoint* free_joint = mjs_addJoint(current_mj_body, nullptr);
+    free_joint->type = mjJNT_FREE;
+  }
+
+  pxr::UsdPrim body_prim_for_xform =
+      current_node->body_path.IsEmpty()
+          ? stage->GetPseudoRoot()
+          : stage->GetPrimAtPath(current_node->body_path);
+
+  for (const auto& gprim_path : current_node->visual_gprims) {
+    auto gprim = stage->GetPrimAtPath(gprim_path);
+    ParseUsdGeomGprim(spec, gprim, body_prim_for_xform, current_mj_body,
+                      caches);
+  }
+
+  for (const auto& collider_path : current_node->colliders) {
+    ParseUsdPhysicsCollider(
+        spec, pxr::UsdPhysicsCollisionAPI(stage->GetPrimAtPath(collider_path)),
+        body_prim_for_xform, current_mj_body, caches);
+  }
+
+  for (const auto& site_path : current_node->sites) {
+    ParseMjcPhysicsSite(
+        spec, pxr::MjcPhysicsSiteAPI(stage->GetPrimAtPath(site_path)),
+        body_prim_for_xform, current_mj_body, caches.xform_cache);
   }
 
   // Recurse through children.
-  for (const auto& child_node : current_node.children) {
-    PopulateSpecFromTree(stage, spec, current_mj_body, &current_node,
-                         *child_node, xform_cache, body_to_prims);
+  for (const auto& child_node : current_node->children) {
+    PopulateSpecFromTree(stage, spec, current_mj_body, current_node,
+                         child_node.get(), caches);
   }
 }
-}  // namespace
+}  // namespace usd
+}  // namespace mujoco
 
 mjSpec* mj_parseUSDStage(const pxr::UsdStageRefPtr stage) {
   mjSpec* spec = mj_makeSpec();
 
-  std::vector<pxr::UsdPhysicsScene> physics_scenes;
+  std::unique_ptr<mujoco::usd::Node> root =
+      mujoco::usd::BuildKinematicTree(stage);
 
-  // Xform cache to use for all queries when parsing.
-  pxr::UsdGeomXformCache xform_cache;
+  // First parse the physics scene and other root elements such as keyframes
+  // and actuators.
+  if (!root->physics_scene.IsEmpty()) {
+    mujoco::usd::ParseUsdPhysicsScene(
+        spec, pxr::UsdPhysicsScene::Get(stage, root->physics_scene));
+  }
 
-  // Search for UsdPhysicsScene type prim, use the first one that has
-  // the MjcPhysicsSceneAPI applied or the first UsdPhysicsScene otherwise.
-  std::optional<pxr::UsdPhysicsScene> physics_scene;
-  for (auto prim : stage->Traverse()) {
-    if (prim.IsA<pxr::UsdPhysicsScene>()) {
-      bool has_mjc_physics_api = prim.HasAPI<pxr::MjcPhysicsSceneAPI>();
-      if (!physics_scene.has_value() || has_mjc_physics_api) {
-        physics_scene = pxr::UsdPhysicsScene(prim);
-        // If we've found the first scene with MjcPhysicsSceneAPI, we can stop
-        // searching.
-        if (has_mjc_physics_api) {
-          break;
-        }
-      }
+  if (!root->keyframes.empty()) {
+    for (const auto& keyframe : root->keyframes) {
+      mujoco::usd::ParseMjcPhysicsKeyframe(
+          spec, pxr::MjcPhysicsKeyframe::Get(stage, keyframe));
     }
   }
 
-  if (physics_scene.has_value()) {
-    ParseUsdPhysicsScene(spec, *physics_scene);
-  }
-
-  pxr::SdfPath default_prim_path;
-  if (stage->GetDefaultPrim().IsValid()) {
-    default_prim_path = stage->GetDefaultPrim().GetPath();
-  }
-
-  // Data Structures
-  std::vector<pxr::UsdPhysicsJoint> all_joints;
-  std::vector<pxr::SdfPath> all_body_paths_vec;
-  BodyPrimMap body_to_prims;
-
-  // =========================================================================
-  // PASS 1: Collect Bodies, Joints, and Geoms/Sites/etc.
-  // =========================================================================
-  // A single DFS pass to find all bodies, joints, and determine
-  // which body owns each geom/site/etc. prim.
-  std::vector<pxr::SdfPath> owner_stack;
-  owner_stack.push_back(pxr::SdfPath());  // Start with the world as owner.
-
-  const auto range = pxr::UsdPrimRange::PreAndPostVisit(
-      stage->GetPseudoRoot(), pxr::UsdTraverseInstanceProxies());
-
-  for (auto it = range.begin(); it != range.end(); ++it) {
-    pxr::UsdPrim prim = *it;
-
-    bool is_body = prim.HasAPI<pxr::UsdPhysicsRigidBodyAPI>();
-    bool resets = xform_cache.GetResetXformStack(prim);
-    // Only update (push/pop) the owner stack for bodies (becomes new owner) and
-    // resetXformStack (reset owner to world).
-    bool is_pushed_to_stack = is_body || resets;
-
-    if (it.IsPostVisit()) {
-      if (is_pushed_to_stack) {
-        owner_stack.pop_back();
-      }
-      continue;
-    }
-
-    pxr::SdfPath prim_path = prim.GetPath();
-    pxr::SdfPath prim_owner = owner_stack.back();
-
-    if (is_body) {
-      all_body_paths_vec.push_back(prim_path);
-      prim_owner = prim_path;
-    } else if (resets) {
-      prim_owner = pxr::SdfPath();  // Reset owner to world.
-    }
-
-    if (is_pushed_to_stack) {
-      owner_stack.push_back(prim_owner);
-    }
-
-    if (prim.HasAPI<pxr::UsdPhysicsCollisionAPI>() ||
-        prim.HasAPI<pxr::MjcPhysicsSiteAPI>()) {
-      body_to_prims[prim_owner].push_back(prim_path);
-    }
-
-    if (prim.IsA<pxr::UsdPhysicsJoint>()) {
-      all_joints.push_back(pxr::UsdPhysicsJoint(prim));
-
-      it.PruneChildren();
-    } else if (prim.IsA<pxr::MjcPhysicsKeyframe>()) {
-      ParseMjcPhysicsKeyframe(spec, pxr::MjcPhysicsKeyframe(prim));
-
-      it.PruneChildren();
-    } else if (prim.IsA<pxr::MjcPhysicsTransmission>()) {
-      ParseMjcPhysicsTransmission(spec, pxr::MjcPhysicsTransmission(prim));
-
-      it.PruneChildren();
+  if (!root->actuators.empty()) {
+    for (const auto& actuator : root->actuators) {
+      mujoco::usd::ParseMjcPhysicsActuator(
+          spec, pxr::MjcPhysicsActuator::Get(stage, actuator));
     }
   }
 
-  // =========================================================================
-  // PASS 2: Build the kinematic tree and populate the mjSpec.
-  // =========================================================================
-  std::unique_ptr<mujoco::usd::KinematicNode> kinematic_tree =
-      mujoco::usd::BuildKinematicTree(all_joints, all_body_paths_vec,
-                                      default_prim_path);
-
-  if (kinematic_tree) {
-    PopulateSpecFromTree(stage, spec, /*parent_mj_body=*/nullptr,
-                         /*parent_node=*/nullptr, *kinematic_tree, xform_cache,
-                         body_to_prims);
-  }
+  // Set of caches to use for all queries when parsing.
+  mujoco::usd::UsdCaches caches;
+  // Then populate the kinematic tree.
+  PopulateSpecFromTree(stage, spec, /*parent_mj_body=*/nullptr,
+                       /*parent_node=*/nullptr, root.get(), caches);
 
   return spec;
+}
+
+MJAPI mjSpec* mj_parseUSD(const char* identifier, const mjVFS* vfs, char* error,
+                          int error_sz) {
+  auto stage = pxr::UsdStage::Open(identifier);
+  return mj_parseUSDStage(stage);
 }
 
