@@ -1,0 +1,14 @@
+CURRICULUM LEARNING FINAL REPORT
+==================================================
+
+Final Task: 1/8
+Task Name: Controllo testa e collo
+Max Height: 1.08
+Max Standing Steps: 0
+Total Training Steps: 31,981,568
+
+TIME DISTRIBUTION:
+  Task 1: 100.0%
+
+TASK TRANSITIONS:
+  Step 40,000: Advanced to Task 1 - Controllo testa e collo

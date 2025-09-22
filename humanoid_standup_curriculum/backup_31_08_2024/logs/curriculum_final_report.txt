@@ -1,0 +1,28 @@
+CURRICULUM LEARNING FINAL REPORT
+==================================================
+
+Final Task: 8/8
+Task Name: Equilibrio stabile
+Max Height: 1.26
+Max Standing Steps: 0
+Total Training Steps: 65,601,536
+
+TIME DISTRIBUTION:
+  Task 1: 0.5%
+  Task 2: 1.0%
+  Task 3: 1.2%
+  Task 4: 1.5%
+  Task 5: 1.8%
+  Task 6: 1.2%
+  Task 7: 2.6%
+  Task 8: 90.2%
+
+TASK TRANSITIONS:
+  Step 40,000: Advanced to Task 1 - Controllo testa e collo
+  Step 400,000: Advanced to Task 2 - Sollevamento torso
+  Step 1,040,000: Advanced to Task 3 - Attivazione gambe
+  Step 1,840,000: Advanced to Task 4 - Posizione quadrupede
+  Step 2,800,000: Advanced to Task 5 - Posizione accovacciata
+  Step 4,000,000: Advanced to Task 6 - Preparazione alzata
+  Step 4,800,000: Advanced to Task 7 - Alzarsi in piedi
+  Step 6,480,000: Advanced to Task 8 - Equilibrio stabile

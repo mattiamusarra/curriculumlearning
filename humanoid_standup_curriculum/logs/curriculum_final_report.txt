@@ -1,0 +1,16 @@
+CURRICULUM LEARNING FINAL REPORT
+==================================================
+
+Final Task: 2/8
+Task Name: Sollevamento torso
+Max Height: 1.21
+Max Standing Steps: 0
+Total Training Steps: 819,200
+
+TIME DISTRIBUTION:
+  Task 1: 45.0%
+  Task 2: 55.0%
+
+TASK TRANSITIONS:
+  Step 40,000: Advanced to Task 1 - Controllo testa e collo
+  Step 400,000: Advanced to Task 2 - Sollevamento torso
