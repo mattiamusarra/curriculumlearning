@@ -414,7 +414,7 @@ class CurriculumWrapper(gym.Wrapper):
         
         self.progress_stagnation = 0
         
-        print(f"🔧 AUTO-RIDUZIONE DIFFICOLTÀ #{self.difficulty_reductions}")
+        print(f" AUTO-RIDUZIONE DIFFICOLTÀ #{self.difficulty_reductions}")
         print(f"   Task: {task['name']}")
         print(f"   Altezza: {old_height:.3f} → {task['height_threshold']:.3f}")
         print(f"   Stabilità: {old_stability:.1f} → {task['stability_threshold']:.1f}")
