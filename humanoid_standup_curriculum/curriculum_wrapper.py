@@ -139,10 +139,10 @@ class CurriculumWrapper(gym.Wrapper):
         self.failure_reasons = {'too_low': 0, 'unstable': 0, 'fell': 0}
         self.progress_stagnation = 0
         
-        print(f"🚀 Progressive Curriculum inizializzato")
-        print(f"📋 Task 1/8: {self.tasks[0]['name']}")
-        print(f"🎯 Altezza target: {self.tasks[0]['height_threshold']:.2f}m")
-        print(f"⚖️  Stabilità max: {self.tasks[0]['stability_threshold']:.1f}")
+        print(f" Progressive Curriculum inizializzato")
+        print(f" Task 1/8: {self.tasks[0]['name']}")
+        print(f" Altezza target: {self.tasks[0]['height_threshold']:.2f}m")
+        print(f"⚖  Stabilità max: {self.tasks[0]['stability_threshold']:.1f}")
 
     def reset(self, **kwargs):
         """Reset con tracking migliorato"""
@@ -363,7 +363,7 @@ class CurriculumWrapper(gym.Wrapper):
         
         task = self.tasks[self.current_task]
         
-        print(f"✅ SUCCESSO Task {self.current_task + 1}!")
+        print(f" SUCCESSO Task {self.current_task + 1}!")
         print(f"   Altezza: {obs[0]:.3f}m (target: {task['height_threshold']:.3f}m)")
         print(f"   Progresso: {self.task_success_count}/{task['success_target']}")
         
@@ -433,13 +433,13 @@ class CurriculumWrapper(gym.Wrapper):
         self.max_steps_standing = 0
         self.progress_stagnation = 0
         
-        status = "⚡ FORZATO" if forced else "🎉 COMPLETATO"
+        status = " FORZATO" if forced else " COMPLETATO"
         
         print(f"\n{status} - AVANZAMENTO CURRICULUM!")
-        print(f"   📈 Da: Task {old_task + 1} - {self.tasks[old_task]['name']} ({old_count} successi)")
-        print(f"   🎯 A:  Task {self.current_task + 1} - {self.tasks[self.current_task]['name']}")
-        print(f"   🏆 Target: {self.tasks[self.current_task]['success_target']} successi")
-        print(f"   📏 Altezza target: {self.tasks[self.current_task]['height_threshold']:.3f}m")
+        print(f"    Da: Task {old_task + 1} - {self.tasks[old_task]['name']} ({old_count} successi)")
+        print(f"    A:  Task {self.current_task + 1} - {self.tasks[self.current_task]['name']}")
+        print(f"    Target: {self.tasks[self.current_task]['success_target']} successi")
+        print(f"    Altezza target: {self.tasks[self.current_task]['height_threshold']:.3f}m")
 
     def get_diagnostic_info(self):
         """Informazioni diagnostiche dettagliate"""
@@ -481,22 +481,22 @@ class CurriculumWrapper(gym.Wrapper):
         info = self.get_diagnostic_info()
         
         print(f"\n{'='*60}")
-        print(f"📊 DIAGNOSTIC STATUS - Task {info['current_task']}/8")
-        print(f"🎯 {info['task_name']}")
+        print(f" DIAGNOSTIC STATUS - Task {info['current_task']}/8")
+        print(f" {info['task_name']}")
         print(f"{'='*60}")
         
-        print(f"📈 PROGRESSO:")
+        print(f" PROGRESSO:")
         print(f"   Successi: {info['success_count']}/{info['success_target']}")
         print(f"   Episodi: {info['episode_count']} (totali: {info['total_episodes']})")
-        print(f"   Stagnazione: {info['progress_stagnation']} {'⚠️' if info['is_stuck'] else '✅'}")
+        print(f"   Stagnazione: {info['progress_stagnation']} {'⚠' if info['is_stuck'] else ''}")
         
-        print(f"📏 ALTEZZE:")
+        print(f" ALTEZZE:")
         print(f"   Target: {info['height_threshold']:.3f}m")
         print(f"   Best: {info['best_height']:.3f}m")
         print(f"   Media recente: {info['avg_recent_height']:.3f}m")
         
         if info['failure_analysis']:
-            print(f"❌ ANALISI FALLIMENTI:")
+            print(f" ANALISI FALLIMENTI:")
             for reason, stat in info['failure_analysis'].items():
                 print(f"   {reason}: {stat}")
         
